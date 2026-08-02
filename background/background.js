@@ -96,13 +96,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.target === 'background' && message.action === 'ready') {
     (async () => {
+      await setJob(message.tabId, { state: 'saving', progress: 100 });
       const downloadId = await chrome.downloads.download({
         url: message.url,
         filename: message.filename,
         saveAs: false
       });
       await setDownload(downloadId, { url: message.url, tabId: message.tabId });
-      await setJob(message.tabId, { state: 'saving', progress: 100 });
       sendResponse({ success: true });
     })().catch(async error => {
       await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });

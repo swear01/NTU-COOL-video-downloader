@@ -30,3 +30,28 @@ test('aborts remaining fragment requests after a terminal failure', async () => 
     globalThis.fetch = originalFetch;
   }
 });
+
+test('retries a failed early fragment before queued later fragments', async () => {
+  const originalFetch = globalThis.fetch;
+  const starts = [];
+  let failed = false;
+  globalThis.fetch = async url => {
+    starts.push(url);
+    if (url === 'early' && !failed) {
+      failed = true;
+      return { ok: false, status: 500 };
+    }
+    if (url !== 'early') await new Promise(resolve => setTimeout(resolve, 400));
+    return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) };
+  };
+
+  try {
+    await downloadAdaptive([
+      { url: 'early' },
+      ...Array.from({ length: 9 }, (_, index) => ({ url: `later-${index}` }))
+    ], () => {});
+    assert.equal(starts[8], 'early');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

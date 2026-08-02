@@ -68,3 +68,18 @@ test('releases the MP4 blob when the browser rejects the download', async () => 
   assert.deepEqual(failed.sent[0], { target: 'offscreen', action: 'release', url: 'blob:failed' });
   assert.deepEqual(store['job:4'], { state: 'error', error: 'blocked' });
 });
+
+test('sets saving state before starting a browser download', async () => {
+  const store = {};
+  let savingSeen = false;
+  const ordered = mockChrome(store, async () => {
+    savingSeen = store['job:5']?.state === 'saving';
+    return 8;
+  });
+  globalThis.chrome = ordered.chromeApi;
+  await import(`../background/background.js?ordered=${Date.now()}`);
+  await send(ordered.chromeApi, {
+    target: 'background', action: 'ready', tabId: 5, filename: 'video.mp4', url: 'blob:ordered'
+  });
+  assert.equal(savingSeen, true);
+});

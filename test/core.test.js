@@ -11,7 +11,7 @@ import {
 } from '../utils/core.js';
 import { hasOffscreenDocument } from '../utils/offscreen.js';
 import { mergeTemplateValues } from '../utils/mpd.js';
-import { releaseMdatBuffers, scaleDuration } from '../utils/remuxer.js';
+import { releaseMdatBuffers, scaleDuration, secondsToTimescale } from '../utils/remuxer.js';
 
 test('selects the highest-resolution video and its matching audio', () => {
   const tracks = selectTracks([
@@ -104,6 +104,7 @@ test('inherits missing representation SegmentTemplate attributes', () => {
 test('converts media duration to the movie timescale', () => {
   assert.equal(scaleDuration(480000, 48000, 600), 6000);
   assert.equal(scaleDuration(153600, 15360, 600), 6000);
+  assert.equal(secondsToTimescale(3976.672, 600), 2386003);
 });
 
 test('releases consumed source mdat buffers after extracting samples', () => {

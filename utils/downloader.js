@@ -60,7 +60,7 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}) {
         controller.observe({ throughput: 0, completed: 0, errors: 1, throttled: error.throttled });
         if (task.attempts >= 3) return stop(error);
         await sleep(error.throttled ? 1000 * task.attempts : 250 * task.attempts);
-        if (!stopped) queue.push(task);
+        if (!stopped) queue.unshift(task);
       } finally {
         clearTimeout(timeout);
         requests.delete(request);
