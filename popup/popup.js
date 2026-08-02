@@ -28,7 +28,7 @@ async function refresh() {
   button.disabled = !response.found;
   if (!response.found) show('No native NTU COOL video found. Refresh the video page and try again.', true);
   else if (!response.job) show('Video found.');
-  render(response.job);
+  if (response.found) render(response.job);
 }
 
 button.addEventListener('click', async () => {

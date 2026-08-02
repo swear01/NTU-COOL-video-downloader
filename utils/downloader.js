@@ -10,17 +10,31 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}) {
   let windowBytes = 0;
   let windowCompleted = 0;
   let windowStarted = performance.now();
+  let stopped = false;
+  const requests = new Set();
 
   return new Promise((resolve, reject) => {
     const pump = () => {
+      if (stopped) return;
       if (completed === tasks.length) return resolve();
       while (active < controller.value && queue.length) run(queue.shift());
     };
 
+    const stop = error => {
+      if (stopped) return;
+      stopped = true;
+      queue.length = 0;
+      for (const request of requests) request.abort();
+      reject(error);
+    };
+
     const run = async task => {
       active += 1;
+      const request = new AbortController();
+      const timeout = setTimeout(() => request.abort(), 30000);
+      requests.add(request);
       try {
-        const response = await fetch(task.url, { signal: AbortSignal.timeout(30000) });
+        const response = await fetch(task.url, { signal: request.signal });
         if (!response.ok) {
           const error = new Error(`HTTP ${response.status}`);
           error.throttled = response.status === 429 || response.status === 503;
@@ -41,12 +55,15 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}) {
         }
         onProgress({ completed, total: tasks.length, concurrency: controller.value });
       } catch (error) {
+        if (stopped) return;
         task.attempts += 1;
         controller.observe({ throughput: 0, completed: 0, errors: 1, throttled: error.throttled });
-        if (task.attempts >= 3) return reject(error);
+        if (task.attempts >= 3) return stop(error);
         await sleep(error.throttled ? 1000 * task.attempts : 250 * task.attempts);
-        queue.push(task);
+        if (!stopped) queue.push(task);
       } finally {
+        clearTimeout(timeout);
+        requests.delete(request);
         active -= 1;
         pump();
       }

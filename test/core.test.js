@@ -10,6 +10,8 @@ import {
   selectTracks
 } from '../utils/core.js';
 import { hasOffscreenDocument } from '../utils/offscreen.js';
+import { mergeTemplateValues } from '../utils/mpd.js';
+import { releaseMdatBuffers, scaleDuration } from '../utils/remuxer.js';
 
 test('selects the highest-resolution video and its matching audio', () => {
   const tracks = selectTracks([
@@ -84,4 +86,33 @@ test('finds an existing offscreen document on Chrome 116+', async () => {
   };
 
   assert.equal(await hasOffscreenDocument(chromeApi, 'offscreen/offscreen.html'), true);
+});
+
+test('inherits missing representation SegmentTemplate attributes', () => {
+  assert.deepEqual(mergeTemplateValues(
+    { initialization: 'init-$RepresentationID$', media: '$Number$', timescale: '10', duration: '20', startNumber: '1' },
+    { startNumber: '4' }
+  ), {
+    initialization: 'init-$RepresentationID$',
+    media: '$Number$',
+    timescale: 10,
+    duration: 20,
+    startNumber: 4
+  });
+});
+
+test('converts media duration to the movie timescale', () => {
+  assert.equal(scaleDuration(480000, 48000, 600), 6000);
+  assert.equal(scaleDuration(153600, 15360, 600), 6000);
+});
+
+test('releases consumed source mdat buffers after extracting samples', () => {
+  let cleaned = 0;
+  const file = { mdats: [
+    { stream: { buffers: [], cleanBuffers: () => { cleaned += 1; } } },
+    { stream: { buffers: [], cleanBuffers: () => { cleaned += 1; } } }
+  ] };
+  releaseMdatBuffers(file);
+  assert.equal(cleaned, 2);
+  assert.equal(file.mdats.length, 0);
 });

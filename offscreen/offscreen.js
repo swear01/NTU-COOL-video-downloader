@@ -17,7 +17,7 @@ async function download({ tabId, manifestUrl, filename }) {
   try {
     const response = await fetch(manifestUrl, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`Unable to read video manifest (HTTP ${response.status}).`);
-    const manifest = parseMpd(await response.text(), manifestUrl);
+    const manifest = parseMpd(await response.text(), response.url || manifestUrl);
     const [videoInit, audioInit] = await Promise.all([
       fetchBuffer(manifest.video.segments[0]),
       fetchBuffer(manifest.audio.segments[0])

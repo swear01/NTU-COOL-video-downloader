@@ -13,16 +13,31 @@ function resolveBase(parentBase, element) {
   return base ? new URL(base, parentBase).href : parentBase;
 }
 
-function templateAttributes(template) {
-  if (!template) throw new Error('No DASH SegmentTemplate found.');
-  if (child(template, 'SegmentTimeline')) throw new Error('SegmentTimeline videos are not supported yet.');
+const templateAttributeNames = ['initialization', 'media', 'timescale', 'duration', 'startNumber'];
+
+function readTemplateValues(template) {
+  return Object.fromEntries(templateAttributeNames
+    .filter(name => template?.hasAttribute(name))
+    .map(name => [name, template.getAttribute(name)]));
+}
+
+export function mergeTemplateValues(parent = {}, own = {}) {
+  const values = { ...parent, ...own };
   return {
-    initialization: template.getAttribute('initialization'),
-    media: template.getAttribute('media'),
-    timescale: Number(template.getAttribute('timescale') || 1),
-    duration: Number(template.getAttribute('duration')),
-    startNumber: Number(template.getAttribute('startNumber') || 1)
+    initialization: values.initialization,
+    media: values.media,
+    timescale: Number(values.timescale || 1),
+    duration: Number(values.duration),
+    startNumber: Number(values.startNumber || 1)
   };
+}
+
+function templateAttributes(parent, own) {
+  if (!parent && !own) throw new Error('No DASH SegmentTemplate found.');
+  if (child(own || parent, 'SegmentTimeline') || (parent && own && child(parent, 'SegmentTimeline'))) {
+    throw new Error('SegmentTimeline videos are not supported yet.');
+  }
+  return mergeTemplateValues(readTemplateValues(parent), readTemplateValues(own));
 }
 
 export function parseMpd(xml, manifestUrl) {
@@ -54,7 +69,7 @@ export function parseMpd(xml, manifestUrl) {
         height: Number(representation.getAttribute('height') || 0),
         bandwidth: Number(representation.getAttribute('bandwidth') || 0),
         baseUrl: resolveBase(adaptationBase, representation),
-        ...templateAttributes(child(representation, 'SegmentTemplate') || inheritedTemplate)
+        ...templateAttributes(inheritedTemplate, child(representation, 'SegmentTemplate'))
       });
     }
   }

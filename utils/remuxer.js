@@ -14,6 +14,15 @@ function sourceTrack(initBuffer) {
   return { file, info: info.tracks[0], offset: initBuffer.byteLength, pending: new Map(), next: 0 };
 }
 
+export function scaleDuration(duration, mediaTimescale, movieTimescale) {
+  return Math.round(duration * movieTimescale / mediaTimescale);
+}
+
+export function releaseMdatBuffers(file) {
+  for (const mdat of file.mdats) mdat.stream?.cleanBuffers();
+  file.mdats = file.mdats.filter(mdat => !mdat.stream || mdat.stream.buffers.length);
+}
+
 function avcConfiguration(file) {
   const stream = new MultiBufferStream();
   stream.endianness = Endianness.BIG_ENDIAN;
@@ -25,15 +34,17 @@ function avcConfiguration(file) {
 
 export class Remuxer {
   constructor(videoInit, audioInit) {
+    const movieTimescale = 600;
     this.video = sourceTrack(videoInit);
     this.audio = sourceTrack(audioInit);
     this.output = createFile();
+    this.output.init({ timescale: movieTimescale });
 
     this.video.outputId = this.output.addTrack({
       type: 'avc1',
       hdlr: 'vide',
       timescale: this.video.info.timescale,
-      duration: this.video.info.duration,
+      duration: scaleDuration(this.video.info.duration, this.video.info.timescale, movieTimescale),
       media_duration: this.video.info.duration,
       width: this.video.info.video.width,
       height: this.video.info.video.height,
@@ -45,7 +56,7 @@ export class Remuxer {
       type: 'mp4a',
       hdlr: 'soun',
       timescale: this.audio.info.timescale,
-      duration: this.audio.info.duration,
+      duration: scaleDuration(this.audio.info.duration, this.audio.info.timescale, movieTimescale),
       media_duration: this.audio.info.duration,
       channel_count: audioEntry.channel_count,
       samplesize: audioEntry.samplesize,
@@ -65,6 +76,7 @@ export class Remuxer {
           });
         }
         source.file.releaseUsedSamples(source.info.id, samples.at(-1).number + 1);
+        releaseMdatBuffers(source.file);
       };
       source.file.start();
     }
