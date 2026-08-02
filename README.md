@@ -1,50 +1,41 @@
-<p align="center">
-  <img src="/icons/icon128.png" width="100" height="100"/>
-</p>
+# NTU COOL Video Downloader
 
-<h1 align="center">NTU COOL Video Downloader</h1>
+A Chromium extension that downloads native NTU COOL DASH videos as MP4 files. It captures the video manifest from an already signed-in NTU COOL tab, downloads video and audio fragments in parallel, combines them in the browser, and sends the result to the browser's normal download manager.
 
-[![en](https://img.shields.io/badge/lang-en-red)](https://github.com/willychen0146/NTU-COOL-video-downloader/blob/main/README.md)
-[![中文](https://img.shields.io/badge/lang-中文-green.svg)](https://github.com/willychen0146/NTU-COOL-video-downloader/blob/main/README.zh-TW.md)
+## Supported browsers
 
-*NTU COOL Video Downloader is a web browser extension designed to facilitate downloading videos from the NTU COOL website.*
+- Google Chrome
+- Brave
+- Microsoft Edge
+- Other Chromium-based desktop browsers with Manifest V3 offscreen document support
 
-## Installation Instructions
-**Google Chrome / Microsoft Edge** (Custom sites supported)
-1. Download this repo as a [ZIP file from GitHub](https://github.com/willychen0146/NTU-COOL-video-downloader.git).
-2. Unzip the file to obtain a folder named `NTU-COOL-video-downloader`.
-3. Open Chrome / Edge and navigate to the extensions page (`chrome://extensions` or `edge://extensions`).
-4. Enable Developer Mode.
-5. Drag and drop the `NTU-COOL-video-downloader` folder onto the extensions page to import it. (**Ensure you place the extension folder in a safe location, as it should not be deleted afterwards.**)
+Windows, macOS, and Linux use the same extension. YouTube videos and login automation are intentionally out of scope.
 
-**Notes**
-- Every time you open Chrome it may warn you about running extensions in developer mode, just click ✕ to keep the extension enabled.
+## Install
 
-## Usage
-1. Navigate to the NTU COOL page containing the video you want to download.
-2. Click on the NTU COOL Video Downloader extension icon.
-3. Click the download button. The video will download automatically.
+1. Download and unzip the release.
+2. Open the browser's extensions page.
+3. Enable Developer mode.
+4. Choose **Load unpacked** and select this folder.
 
-## Video Compatibility
-Currently, the extension does not support old videos that are not rendered by React on the NTU COOL website.
+## Use
 
-## Troubleshooting
-If the extension fails to work, try refreshing the NTU COOL page and attempt again.
+1. Open a native NTU COOL video and wait for the player to load.
+2. Open the extension.
+3. Click **Download video**.
+4. Keep the browser open while the extension downloads and combines the fragments. The completed MP4 is sent to the browser's normal download manager.
 
-## Disclaimer
-This extension is intended for learning and educational purposes only.
+The extension automatically selects the highest available video quality and adjusts parallel download concurrency between 4 and 64.
 
-## TODO 🐱
-- [x] Implement basic download function
-- [ ] Improve user interface design
-- [ ] Add support for Mozilla Firefox
-- [ ] Add support for downloading older videos on NTU COOL
-- [ ] Enable customized batch downloading
+## Development
 
-## Authors
+```sh
+npm install
+npm test
+```
 
-- [@NoMercySusie](https://github.com/willychen0146)
+MP4Box.js is the only runtime dependency. Its browser modules and license are vendored under `vendor/` so release users do not need Node.js or npm.
 
-## LICENSE
+## License
 
-The project is made available under the MIT license. See the LICENSE file for more information.
+MIT. See `LICENSE`. MP4Box.js is distributed under its BSD-3-Clause license in `vendor/MP4Box.LICENSE`.
