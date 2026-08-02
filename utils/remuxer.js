@@ -22,6 +22,10 @@ export function secondsToTimescale(seconds, timescale) {
   return Math.round(seconds * timescale);
 }
 
+export function mediaDuration(duration, presentationSeconds, timescale) {
+  return duration || secondsToTimescale(presentationSeconds, timescale);
+}
+
 export function releaseMdatBuffers(file) {
   for (const mdat of file.mdats) mdat.stream?.cleanBuffers();
   file.mdats = file.mdats.filter(mdat => !mdat.stream || mdat.stream.buffers.length);
@@ -43,13 +47,15 @@ export class Remuxer {
     this.audio = sourceTrack(audioInit);
     this.output = createFile();
     this.output.init({ timescale: movieTimescale, duration: secondsToTimescale(duration, movieTimescale) });
+    const videoDuration = mediaDuration(this.video.info.duration, duration, this.video.info.timescale);
+    const audioDuration = mediaDuration(this.audio.info.duration, duration, this.audio.info.timescale);
 
     this.video.outputId = this.output.addTrack({
       type: 'avc1',
       hdlr: 'vide',
       timescale: this.video.info.timescale,
-      duration: scaleDuration(this.video.info.duration, this.video.info.timescale, movieTimescale),
-      media_duration: this.video.info.duration,
+      duration: scaleDuration(videoDuration, this.video.info.timescale, movieTimescale),
+      media_duration: videoDuration,
       width: this.video.info.video.width,
       height: this.video.info.video.height,
       avcDecoderConfigRecord: avcConfiguration(this.video.file)
@@ -60,8 +66,8 @@ export class Remuxer {
       type: 'mp4a',
       hdlr: 'soun',
       timescale: this.audio.info.timescale,
-      duration: scaleDuration(this.audio.info.duration, this.audio.info.timescale, movieTimescale),
-      media_duration: this.audio.info.duration,
+      duration: scaleDuration(audioDuration, this.audio.info.timescale, movieTimescale),
+      media_duration: audioDuration,
       channel_count: audioEntry.channel_count,
       samplesize: audioEntry.samplesize,
       samplerate: audioEntry.samplerate,

@@ -132,7 +132,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         filename: sanitizeFilename(message.title)
       });
       sendResponse({ success: true });
-    })().catch(error => sendResponse({ success: false, error: error.message }));
+    })().catch(async error => {
+      await setJob(message.tabId, { state: 'error', error: error.message });
+      sendResponse({ success: false, error: error.message });
+    });
     return true;
   }
 });

@@ -83,3 +83,14 @@ test('sets saving state before starting a browser download', async () => {
   });
   assert.equal(savingSeen, true);
 });
+
+test('persists an offscreen dispatch failure as a terminal job', async () => {
+  const store = { 'manifest:6': 'https://media.example/manifest.mpd' };
+  const failed = mockChrome(store);
+  failed.chromeApi.runtime.sendMessage = async () => { throw new Error('offscreen crashed'); };
+  globalThis.chrome = failed.chromeApi;
+  await import(`../background/background.js?dispatch=${Date.now()}`);
+  await send(failed.chromeApi, { action: 'startDownload', tabId: 6, title: 'Lecture' });
+
+  assert.deepEqual(store['job:6'], { state: 'error', error: 'offscreen crashed' });
+});

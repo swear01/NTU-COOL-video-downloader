@@ -5,12 +5,6 @@ import { Remuxer } from '../utils/remuxer.js';
 let busy = false;
 const objectUrls = new Set();
 
-async function fetchBuffer(url) {
-  const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.arrayBuffer();
-}
-
 async function download({ tabId, manifestUrl, filename }) {
   if (busy) throw new Error('Another video download is already running.');
   busy = true;
@@ -18,11 +12,12 @@ async function download({ tabId, manifestUrl, filename }) {
     const response = await fetch(manifestUrl, { signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`Unable to read video manifest (HTTP ${response.status}).`);
     const manifest = parseMpd(await response.text(), response.url || manifestUrl);
-    const [videoInit, audioInit] = await Promise.all([
-      fetchBuffer(manifest.video.segments[0]),
-      fetchBuffer(manifest.audio.segments[0])
-    ]);
-    const remuxer = new Remuxer(videoInit, audioInit, manifest.duration);
+    const initialization = {};
+    await downloadAdaptive([
+      { kind: 'video', url: manifest.video.segments[0] },
+      { kind: 'audio', url: manifest.audio.segments[0] }
+    ], (task, buffer) => { initialization[task.kind] = buffer; });
+    const remuxer = new Remuxer(initialization.video, initialization.audio, manifest.duration);
     const tasks = [];
     for (const kind of ['video', 'audio']) {
       manifest[kind].segments.slice(1).forEach((url, index) => tasks.push({ kind, index, url }));
