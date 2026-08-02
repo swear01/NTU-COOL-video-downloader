@@ -1,158 +1,141 @@
-// background.js
+import { ManifestStore, sanitizeFilename } from '../utils/core.js';
+import { hasOffscreenDocument } from '../utils/offscreen.js';
 
-// import { API } from '/utils/api.js';
-// import { URLPatterns } from '/utils/constants.js';
-// import { Logger } from '/utils/logger.js';
-// import { VideoRequestManager } from '/utils/videoRequestManager.js';
-// import { DownloadManager } from '/utils/downloadManager.js';
+const manifests = new ManifestStore();
+const jobs = new Map();
+const downloads = new Map();
+const storageKey = tabId => `manifest:${tabId}`;
+const jobKey = tabId => `job:${tabId}`;
+const downloadKey = downloadId => `download:${downloadId}`;
 
-// class BackgroundScript {
-//   constructor() {
-//     this.api = API;
-//     this.logger = new Logger();
-//     this.videoRequestManager = new VideoRequestManager();
-//     this.downloadManager = new DownloadManager(this.api, this.logger);
+async function setJob(tabId, job) {
+  jobs.set(tabId, job);
+  await chrome.storage.session.set({ [jobKey(tabId)]: job });
+}
 
-//     this.initializeListeners();
-//   }
+async function getJob(tabId) {
+  if (jobs.has(tabId)) return jobs.get(tabId);
+  const stored = await chrome.storage.session.get(jobKey(tabId));
+  const job = stored[jobKey(tabId)] || null;
+  if (job) jobs.set(tabId, job);
+  return job;
+}
 
-//   initializeListeners() {
-//     this.api.webRequest.onBeforeRequest.addListener(
-//       this.handleWebRequest.bind(this),
-//       { urls: [URLPatterns.NTU_VIDEO] }
-//     );
+async function setDownload(downloadId, download) {
+  downloads.set(downloadId, download);
+  await chrome.storage.session.set({ [downloadKey(downloadId)]: download });
+}
 
-//     this.api.tabs.onUpdated.addListener(this.handleTabUpdate.bind(this));
-//     this.api.tabs.onRemoved.addListener(this.handleTabRemove.bind(this));
-//     this.api.runtime.onMessage.addListener(this.handleMessage.bind(this));
-//   }
+async function getDownload(downloadId) {
+  if (downloads.has(downloadId)) return downloads.get(downloadId);
+  const stored = await chrome.storage.session.get(downloadKey(downloadId));
+  const download = stored[downloadKey(downloadId)] || null;
+  if (download) downloads.set(downloadId, download);
+  return download;
+}
 
-//   handleWebRequest(details) {
-//     const url = details.url;
-//     if (URLPatterns.VIDEO_REQUEST.test(url)) {
-//       this.videoRequestManager.addUrl(url);
-//       this.logger.info(`Video request URL added: ${url}`);
-//     }
-//   }
+async function setManifest(tabId, url) {
+  manifests.set(tabId, url);
+  await chrome.storage.session.set({ [storageKey(tabId)]: url });
+}
 
-//   handleTabUpdate(tabId, changeInfo, tab) {
-//     if (tab.url && tab.url.includes(URLPatterns.NTU_COOL) && changeInfo.status === "loading") {
-//       this.videoRequestManager.clear();
-//       this.logger.info("Cleared video request URLs for new page navigation.");
-//     }
-//   }
+async function getManifest(tabId) {
+  const cached = manifests.get(tabId);
+  if (cached) return cached;
+  const stored = await chrome.storage.session.get(storageKey(tabId));
+  const url = stored[storageKey(tabId)] || null;
+  if (url) manifests.set(tabId, url);
+  return url;
+}
 
-//   handleTabRemove(tabId, removeInfo) {
-//     this.videoRequestManager.clear();
-//     this.logger.info("Cleared video request URLs as tab is closed.");
-//   }
+async function deleteManifest(tabId) {
+  manifests.delete(tabId);
+  jobs.delete(tabId);
+  await chrome.storage.session.remove([storageKey(tabId), jobKey(tabId)]);
+}
 
-//   async handleMessage(request, sender, sendResponse) {
-//     if (request.action === "triggerDownload") {
-//       try {
-//         const result = await this.downloadManager.downloadVideo(this.videoRequestManager.getLastUrl());
-//         sendResponse(result);
-//       } catch (error) {
-//         this.logger.error('Error in download:', error);
-//         sendResponse({ success: false, error: error.message });
-//       }
-//     } else {
-//       sendResponse({ success: false, error: "Invalid action." });
-//     }
-//     return true;
-//   }
-// }
+async function ensureOffscreenDocument() {
+  if (await hasOffscreenDocument(chrome, 'offscreen/offscreen.html')) return;
+  await chrome.offscreen.createDocument({
+    url: 'offscreen/offscreen.html',
+    reasons: ['BLOBS'],
+    justification: 'Download and combine DASH video and audio fragments.'
+  });
+}
 
-// new BackgroundScript();
+chrome.webRequest.onBeforeRequest.addListener(details => {
+  const url = new URL(details.url);
+  if (url.pathname.endsWith('/manifest.mpd')) setManifest(details.tabId, details.url);
+}, { urls: ['https://*.dlc.ntu.edu.tw/*manifest.mpd*'] });
 
-// Define the browser API
-const api = typeof browser !== 'undefined' ? browser : chrome;
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') deleteManifest(tabId);
+});
 
-// Array to store video request URLs
-let videoRequestUrls = [];
+chrome.tabs.onRemoved.addListener(tabId => deleteManifest(tabId));
 
-// Listen for requests made by the webpage
-api.webRequest.onBeforeRequest.addListener(
-  details => {
-    const url = details.url;
-    // console.log("Request made by the webpage:", url);
-    const urlPattern = /^https:\/\/cool-video\.dlc\.ntu\.edu\.tw\/api\/courses\/[^\/]+\/videos\/[^\/]+\/view$/;
-    if (urlPattern.test(url)) {
-      videoRequestUrls.push(url);
-      console.log("Video request URL added to the array:", url);
-    }
-  },
-  {urls: ["*://cool-video.dlc.ntu.edu.tw/*"]} // Listen only to ntu URLs
-);
-
-// Listen for tab navigation events
-api.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // Check if the tab is navigating within the cool.ntu.edu.tw domain
-  if (tab.url && tab.url.includes("cool.ntu.edu.tw") && changeInfo.status === "loading") {
-    // Clear the videoRequestUrls array to start fresh for the new page
-    videoRequestUrls = [];
-    console.log("Cleared videoRequestUrls for new page navigation.");
+chrome.downloads.onChanged.addListener(async delta => {
+  if (!delta.state || !['complete', 'interrupted'].includes(delta.state.current)) return;
+  const download = await getDownload(delta.id);
+  if (!download) return;
+  if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
+    await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
+    await setJob(download.tabId, delta.state.current === 'complete'
+      ? { state: 'complete', progress: 100 }
+      : { state: 'error', error: delta.error?.current || 'Browser download was interrupted.' });
+    downloads.delete(delta.id);
+    await chrome.storage.session.remove(downloadKey(delta.id));
   }
 });
 
-// Listen for tab removal events (when a tab is closed)
-api.tabs.onRemoved.addListener((tabId, removeInfo) => {
-  // Clear the videoRequestUrls array as the tab is closed
-  videoRequestUrls = [];
-  console.log("Cleared videoRequestUrls as tab is closed.");
-});
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.target === 'background' && message.action === 'progress') {
+    setJob(message.tabId, message.status);
+    return;
+  }
 
-// Listen for messages from the popup and trigger the download
-api.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "triggerDownload" && videoRequestUrls.length > 0) {
-    const videoUrl = videoRequestUrls.pop(); // Use and remove the last URL
-    fetch(videoUrl)
-      .then(response => response.json())
-      .then(data => {
-        let downloadUrl = null;
-        console.log('data.sourceUri', data.sourceUri);
-        console.log('data.altSourceUri', data.altSourceUri);
-        
-        // Check for different possible URL patterns
-        if (data.sourceUri && data.sourceUri.includes('.mp4')) {
-          downloadUrl = data.sourceUri;
-        } else if (data.altSourceUri && data.altSourceUri.includes('.mp4')) {
-          downloadUrl = data.altSourceUri;
-        } else if (data.sourceUri && data.sourceUri.includes('manifest.mpd')) {
-          // If it's a manifest file, use the altSourceUri if available
-          downloadUrl = data.altSourceUri;
-        }
-        console.log('downloadUrl', downloadUrl)
-        if (downloadUrl) {
-          const timestamp = new Date().getTime();
-          const uniqueFilename = `video_${timestamp}.mp4`;
-          api.downloads.download({
-            url: downloadUrl,
-            filename: uniqueFilename
-          }, function(downloadId) {
-            if (downloadId) {
-              sendResponse({success: true});
-            } else {
-              sendResponse({success: false, error: "Download initiation failed."});
-            }
-          });
-        } else {
-          sendResponse({success: false, error: "No suitable video URL found."});
-        }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        sendResponse({success: false, error: "Failed to fetch video URL."});
+  if (message.target === 'background' && message.action === 'ready') {
+    (async () => {
+      await setJob(message.tabId, { state: 'saving', progress: 100 });
+      const downloadId = await chrome.downloads.download({
+        url: message.url,
+        filename: message.filename,
+        saveAs: false
       });
+      await setDownload(downloadId, { url: message.url, tabId: message.tabId });
+      sendResponse({ success: true });
+    })().catch(async error => {
+      await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });
+      await setJob(message.tabId, { state: 'error', error: error.message });
+      sendResponse({ success: false });
+    });
     return true;
-  } else if (request.action === "getVideoUrl") {
-    if (videoRequestUrls.length > 0) {
-      sendResponse({url: videoRequestUrls[videoRequestUrls.length - 1]});
-    } else {
-      sendResponse({url: null});
-    }
+  }
+
+  if (message.action === 'getStatus') {
+    Promise.all([getManifest(message.tabId), getJob(message.tabId)])
+      .then(([url, job]) => sendResponse({ found: Boolean(url), job }));
     return true;
-  } else {
-    sendResponse({success: false, error: "No video URL found."});
+  }
+
+  if (message.action === 'startDownload') {
+    (async () => {
+      const manifestUrl = await getManifest(message.tabId);
+      if (!manifestUrl) throw new Error('No NTU COOL video found. Refresh the page and try again.');
+      await ensureOffscreenDocument();
+      await setJob(message.tabId, { state: 'preparing', progress: 0 });
+      await chrome.runtime.sendMessage({
+        target: 'offscreen',
+        action: 'download',
+        tabId: message.tabId,
+        manifestUrl,
+        filename: sanitizeFilename(message.title)
+      });
+      sendResponse({ success: true });
+    })().catch(async error => {
+      await setJob(message.tabId, { state: 'error', error: error.message });
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
   }
 });

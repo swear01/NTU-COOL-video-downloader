@@ -1,0 +1,13 @@
+{
+  "name": "ntu-cool-video-downloader",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "package": "sh scripts/package.sh",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mp4box": "2.4.1"
+  }
+}
