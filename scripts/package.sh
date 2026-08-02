@@ -4,12 +4,13 @@ set -eu
 cd "$(dirname "$0")/.."
 version=$(node -p "require('./manifest.json').version")
 name="NTU-COOL-video-downloader-$version"
+output="$PWD/release/$name.zip"
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
-mkdir -p "release" "$stage/$name"
-cp manifest.json LICENSE README.md README.zh-TW.md "$stage/$name/"
-cp -R background icons offscreen popup utils vendor "$stage/$name/"
-rm -f "release/$name.zip"
-(cd "$stage" && zip -X -q -r "$OLDPWD/release/$name.zip" "$name")
+mkdir -p "release" "$stage/package"
+cp manifest.json LICENSE README.md README.zh-TW.md "$stage/package/"
+cp -R background icons offscreen popup utils vendor "$stage/package/"
+rm -f "$output"
+(cd "$stage/package" && zip -X -q -r "$output" .)
 printf '%s\n' "release/$name.zip"

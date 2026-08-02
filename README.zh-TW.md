@@ -26,7 +26,7 @@
 
 ## 安裝
 
-1. 從[最新 Release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)下載 ZIP 與 `SHA256SUMS`，再解壓縮 ZIP。
+1. 從[最新 Release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)下載 ZIP 與 `SHA256SUMS`，再將 ZIP 解壓縮到新的資料夾。
 2. 開啟瀏覽器擴充功能頁面，例如 `chrome://extensions`。
 3. 啟用「開發人員模式」。
 4. 選擇「載入未封裝項目」，並指定解壓縮後的資料夾。
@@ -64,12 +64,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.1.0.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
+Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.1.1.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
 
 使用 [GitHub CLI](https://cli.github.com/)驗證建置來源簽章：
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.1.0.zip \
+gh attestation verify NTU-COOL-video-downloader-1.1.1.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 
@@ -84,6 +84,8 @@ npm run package
 ```
 
 MP4Box.js 2.4.1 是唯一的 runtime dependency。瀏覽器模組與 BSD-3-Clause 授權檔已放在 `vendor/`，使用者不需要安裝 Node.js 或 npm；其餘程式只使用瀏覽器 API 與 JavaScript 標準函式庫。
+
+產生的 ZIP 遵循 Chrome 套件結構，`manifest.json` 直接位於壓縮檔根目錄；同一份 ZIP 可以上傳至相容的擴充元件後台，或解壓後透過「載入未封裝項目」安裝。
 
 本專案為獨立專案，與國立臺灣大學沒有隸屬或背書關係；NTU COOL 名稱與 Logo 權利屬原權利人所有，此處僅用於識別相容性。
 
