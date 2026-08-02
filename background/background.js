@@ -1,4 +1,5 @@
 import { ManifestStore, sanitizeFilename } from '../utils/core.js';
+import { hasOffscreenDocument } from '../utils/offscreen.js';
 
 const manifests = new ManifestStore();
 const jobs = new Map();
@@ -25,7 +26,7 @@ async function deleteManifest(tabId) {
 }
 
 async function ensureOffscreenDocument() {
-  if (await chrome.offscreen.hasDocument()) return;
+  if (await hasOffscreenDocument(chrome, 'offscreen/offscreen.html')) return;
   await chrome.offscreen.createDocument({
     url: 'offscreen/offscreen.html',
     reasons: ['BLOBS'],

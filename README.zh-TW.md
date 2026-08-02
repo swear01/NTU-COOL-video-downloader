@@ -1,5 +1,10 @@
 # NTU COOL 影片下載器
 
+[![CI](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/codeql.yml)
+[![最新版本](https://img.shields.io/github/v/release/swear01/NTU-COOL-video-downloader)](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)
+[![授權：MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [English](README.md)
 
 小而美的 Chromium 擴充套件，用來把 NTU COOL 原生影片下載成 MP4。它直接使用瀏覽器中已開啟的登入狀態，不做登入自動化、不需要本機 helper，也不使用外部服務。
@@ -15,13 +20,13 @@
 
 ## 支援範圍
 
-同一份擴充套件支援 Windows、macOS、Linux，以及目前版本的 Chrome、Brave、Edge 和其他支援 Manifest V3 offscreen document 的 Chromium 瀏覽器。
+同一份擴充套件支援 Windows、macOS、Linux，以及 Chrome 116 以上、Brave、Edge 和其他相容的 Chromium 瀏覽器。Popup 會自動跟隨作業系統的亮色或深色外觀。
 
 目前支援新版 NTU COOL 原生 DASH 播放器。YouTube embed、登入自動化、Firefox、Safari 與其他串流格式不在範圍內。
 
 ## 安裝
 
-1. 下載並解壓縮 release 套件。
+1. 從[最新 Release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)下載 ZIP 與 `SHA256SUMS`，再解壓縮 ZIP。
 2. 開啟瀏覽器擴充功能頁面，例如 `chrome://extensions`。
 3. 啟用「開發人員模式」。
 4. 選擇「載入未封裝項目」，並指定解壓縮後的資料夾。
@@ -48,14 +53,39 @@
 
 擴充套件無法讀取一般瀏覽紀錄、Cookie、密碼或其他網站，也沒有分析、遙測、廣告或遠端程式碼。捕捉到的簽章網址只存在目前瀏覽器工作階段，分頁導覽或關閉時即移除。
 
+## Release 安全與驗證
+
+每個 Pull Request 與 Release 都會執行測試、npm dependency audit、CodeQL 分析及 ClamAV 掃毒。Release ZIP 與 checksum 檔案會取得由 Sigstore 支援的 GitHub artifact attestation，使用者可以確認檔案確實由本 repo 的 Release workflow 產生。
+
+下載兩個 Release 檔案後驗證 checksum：
+
+```sh
+sha256sum --check SHA256SUMS       # Linux
+shasum -a 256 --check SHA256SUMS  # macOS
+```
+
+Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.1.0.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
+
+使用 [GitHub CLI](https://cli.github.com/)驗證建置來源簽章：
+
+```sh
+gh attestation verify NTU-COOL-video-downloader-1.1.0.zip \
+  --repo swear01/NTU-COOL-video-downloader
+```
+
+請將版本號換成實際下載的 Release。Workflow actions 全部固定在明確 commit，ZIP 只包含執行所需檔案，完整原始碼也可公開檢查。Chrome 通常限制 Windows 與 macOS 安裝自行託管的擴充元件，因此本專案提供可驗證的 ZIP，透過「載入未封裝項目」跨平台安裝，而不宣稱自行簽署的 CRX 能在所有平台直接安裝。
+
 ## 開發
 
 ```sh
 npm install
 npm test
+npm run package
 ```
 
 MP4Box.js 2.4.1 是唯一的 runtime dependency。瀏覽器模組與 BSD-3-Clause 授權檔已放在 `vendor/`，使用者不需要安裝 Node.js 或 npm；其餘程式只使用瀏覽器 API 與 JavaScript 標準函式庫。
+
+本專案為獨立專案，與國立臺灣大學沒有隸屬或背書關係；NTU COOL 名稱與 Logo 權利屬原權利人所有，此處僅用於識別相容性。
 
 ## 授權
 

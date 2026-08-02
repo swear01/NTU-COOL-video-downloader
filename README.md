@@ -1,5 +1,10 @@
 # NTU COOL Video Downloader
 
+[![CI](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/ci.yml/badge.svg)](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/codeql.yml/badge.svg)](https://github.com/swear01/NTU-COOL-video-downloader/actions/workflows/codeql.yml)
+[![Latest release](https://img.shields.io/github/v/release/swear01/NTU-COOL-video-downloader)](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [繁體中文](README.zh-TW.md)
 
 A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or external service.
@@ -15,13 +20,13 @@ A small Chromium extension for downloading native NTU COOL videos as MP4 files. 
 
 ## Support
 
-The same extension works on Windows, macOS, and Linux in current versions of Chrome, Brave, Edge, and other Chromium browsers with Manifest V3 offscreen-document support.
+The same extension works on Windows, macOS, and Linux in Chrome 116 or newer, Brave, Edge, and other compatible Chromium browsers. The popup follows the operating system's light or dark appearance.
 
 It supports the current native NTU COOL DASH player. YouTube embeds, login automation, Firefox, Safari, and other streaming formats are outside its scope.
 
 ## Install
 
-1. Download and unzip the release package.
+1. Download the ZIP and `SHA256SUMS` from the [latest release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest), then unzip it.
 2. Open the browser's extensions page, such as `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked** and select the unzipped folder.
@@ -48,14 +53,39 @@ The MP4 appears in the browser's normal download manager when processing finishe
 
 The extension has no access to general browsing history, cookies, passwords, or unrelated websites. It has no analytics, telemetry, advertising, or remote code. Captured signed URLs remain inside the browser session and are removed when the tab navigates or closes.
 
+## Release safety and verification
+
+Every pull request and release runs the test suite, npm dependency audit, CodeQL analysis, and a ClamAV scan. Release ZIPs and their checksum file receive a GitHub artifact attestation backed by Sigstore, so the files can be verified as products of this repository's release workflow.
+
+Verify the checksum after downloading both release files:
+
+```sh
+sha256sum --check SHA256SUMS       # Linux
+shasum -a 256 --check SHA256SUMS  # macOS
+```
+
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.1.0.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+
+Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
+
+```sh
+gh attestation verify NTU-COOL-video-downloader-1.1.0.zip \
+  --repo swear01/NTU-COOL-video-downloader
+```
+
+Use the version number shown by the release you downloaded. Workflow actions are pinned to exact commits, the release contains only the files needed at runtime, and the full source is available for inspection. Because Chrome normally restricts self-hosted extension installation on Windows and macOS, this project distributes a verifiable ZIP for **Load unpacked** instead of claiming that a self-signed CRX works everywhere.
+
 ## Development
 
 ```sh
 npm install
 npm test
+npm run package
 ```
 
 MP4Box.js 2.4.1 is the only runtime dependency. Its browser modules and BSD-3-Clause license are vendored under `vendor/`, so users do not need Node.js or npm. All other code uses browser APIs and the JavaScript standard library.
+
+This independent project is not affiliated with or endorsed by National Taiwan University. The NTU COOL name and logo belong to their respective owner and are used only to identify compatibility.
 
 ## License
 

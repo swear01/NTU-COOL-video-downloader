@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "package": "sh scripts/package.sh",
     "test": "node --test"
   },
   "dependencies": {

@@ -5,13 +5,34 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>NTU COOL Video Downloader</title>
   <style>
-    body { width: 280px; margin: 0; padding: 18px; color: #202124; font: 14px system-ui, sans-serif; }
+    :root {
+      color-scheme: light dark;
+      --background: #fff;
+      --foreground: #202124;
+      --button: #007da5;
+      --button-hover: #006487;
+      --button-disabled: #9aa0a6;
+      --error: #b3261e;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #202124;
+        --foreground: #f1f3f4;
+        --button: #00a9d6;
+        --button-hover: #32b9dd;
+        --button-disabled: #5f6368;
+        --error: #ffb4ab;
+      }
+    }
+    body { width: 280px; margin: 0; padding: 18px; color: var(--foreground); background: var(--background); font: 14px system-ui, sans-serif; }
     h1 { margin: 0 0 14px; font-size: 17px; }
-    button { width: 100%; border: 0; border-radius: 8px; padding: 10px; color: white; background: #137333; font-weight: 600; cursor: pointer; }
-    button:disabled { cursor: default; background: #9aa0a6; }
+    button { width: 100%; border: 0; border-radius: 8px; padding: 10px; color: white; background: var(--button); font-weight: 600; cursor: pointer; }
+    button:hover:not(:disabled) { background: var(--button-hover); }
+    button:focus-visible { outline: 2px solid var(--foreground); outline-offset: 2px; }
+    button:disabled { cursor: default; background: var(--button-disabled); }
     #status { margin: 12px 0 0; line-height: 1.4; }
-    progress { width: 100%; margin-top: 12px; }
-    .error { color: #b3261e; }
+    progress { width: 100%; margin-top: 12px; accent-color: var(--button); }
+    .error { color: var(--error); }
   </style>
 </head>
 <body>

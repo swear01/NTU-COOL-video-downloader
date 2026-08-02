@@ -9,6 +9,7 @@ import {
   sanitizeFilename,
   selectTracks
 } from '../utils/core.js';
+import { hasOffscreenDocument } from '../utils/offscreen.js';
 
 test('selects the highest-resolution video and its matching audio', () => {
   const tracks = selectTracks([
@@ -70,4 +71,17 @@ test('auto concurrency grows on useful throughput gains and halves on throttling
 test('sanitizes page titles into safe MP4 filenames', () => {
   assert.equal(sanitizeFilename('Two-View Geometry: Epipolar / Geometry'), 'Two-View Geometry Epipolar Geometry.mp4');
   assert.equal(sanitizeFilename('   '), 'ntu-cool-video.mp4');
+});
+
+test('finds an existing offscreen document on Chrome 116+', async () => {
+  const chromeApi = {
+    runtime: {
+      getURL: path => `chrome-extension://test/${path}`,
+      getContexts: async query => query.documentUrls[0].endsWith('/offscreen/offscreen.html')
+        ? [{ contextType: 'OFFSCREEN_DOCUMENT' }]
+        : []
+    }
+  };
+
+  assert.equal(await hasOffscreenDocument(chromeApi, 'offscreen/offscreen.html'), true);
 });
