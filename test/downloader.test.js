@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { downloadAdaptive } from '../utils/downloader.js';
+import { DownloadControl, downloadAdaptive } from '../utils/downloader.js';
 
 test('aborts remaining fragment requests after a terminal failure', async () => {
   const originalFetch = globalThis.fetch;
@@ -54,4 +54,61 @@ test('retries a failed early fragment before queued later fragments', async () =
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('pauses active requests and resumes unfinished fragments', async () => {
+  const originalFetch = globalThis.fetch;
+  const control = new DownloadControl();
+  let starts = 0;
+  let received = 0;
+  globalThis.fetch = (_url, { signal }) => {
+    starts += 1;
+    if (starts > 1) return Promise.resolve({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(1)
+    });
+    return new Promise((resolve, reject) => signal.addEventListener('abort', () => {
+      reject(signal.reason);
+    }, { once: true }));
+  };
+
+  try {
+    const downloading = downloadAdaptive([{ url: 'fragment' }], () => { received += 1; }, undefined, control);
+    await new Promise(resolve => setTimeout(resolve));
+    control.pause();
+    await new Promise(resolve => setTimeout(resolve));
+    assert.equal(received, 0);
+    control.resume();
+    await downloading;
+    assert.equal(starts, 2);
+    assert.equal(received, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cancels active fragment downloads', async () => {
+  const originalFetch = globalThis.fetch;
+  const control = new DownloadControl();
+  globalThis.fetch = (_url, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+
+  try {
+    const downloading = downloadAdaptive([{ url: 'fragment' }], () => {}, undefined, control);
+    await new Promise(resolve => setTimeout(resolve));
+    control.cancel();
+    await assert.rejects(downloading, /canceled/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('rejects a download that was canceled before it started', { timeout: 100 }, async () => {
+  const control = new DownloadControl();
+  control.cancel();
+  await assert.rejects(
+    downloadAdaptive([{ url: 'fragment' }], () => {}, undefined, control),
+    /canceled/i
+  );
 });

@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
   "minimum_chrome_version": "116",
-  "name": "NTU COOL Video Downloader",
-  "version": "1.1.2",
-  "description": "Download native NTU COOL videos as MP4 files.",
+  "name": "__MSG_extensionName__",
+  "version": "1.2.0",
+  "description": "__MSG_extensionDescription__",
+  "default_locale": "en",
   "permissions": [
     "activeTab",
+    "alarms",
+    "contextMenus",
     "downloads",
     "offscreen",
     "storage",
@@ -13,6 +16,9 @@
   ],
   "host_permissions": [
     "https://*.dlc.ntu.edu.tw/*"
+  ],
+  "optional_host_permissions": [
+    "https://cool.ntu.edu.tw/*"
   ],
   "background": {
     "service_worker": "background/background.js",

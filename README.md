@@ -18,11 +18,13 @@ A small Chromium extension for downloading native NTU COOL videos as MP4 files. 
 - Downloads fragments in parallel with automatic concurrency from 4 to 64.
 - Combines H.264 video and AAC audio entirely in the browser.
 - Sends the finished MP4 to the browser's normal download manager.
+- Downloads a pasted list of direct NTU COOL video-page links one at a time.
+- Provides English and Traditional Chinese interfaces.
 - Keeps each tab isolated and clears captured URLs when the tab navigates or closes.
 
 ## Support
 
-The same extension works on Windows, macOS, and Linux in Chrome 116 or newer, Brave, Edge, and other compatible Chromium browsers. The popup follows the operating system's light or dark appearance.
+The same extension works on Windows, macOS, and Linux in Chrome 116 or newer, Brave, Edge, and other compatible Chromium browsers. Its interfaces follow the operating system's light or dark appearance.
 
 It supports the current native NTU COOL DASH player. YouTube embeds, login automation, Firefox, Safari, and other streaming formats are outside its scope.
 
@@ -42,16 +44,21 @@ It supports the current native NTU COOL DASH player. YouTube embeds, login autom
 
 The MP4 appears in the browser's normal download manager when processing finishes. The browser's existing download-location preference is respected.
 
+For batch download, right-click the extension icon and choose **Open COOL batch downloader**. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Batch mode supports direct `/courses/.../modules/items/...` links only.
+
 ## Permissions and privacy
 
 | Permission | Purpose |
 | --- | --- |
 | `activeTab` | Reads the active tab title only after the extension is opened, for the MP4 filename. |
+| `alarms` | Stops waiting for a batch page that does not expose a native video. |
+| `contextMenus` | Adds the user-invoked shortcut that opens the batch-download page. |
 | `webRequest` | Detects `manifest.mpd` requests from the native player. It does not modify network traffic. |
-| `storage` | Keeps the latest manifest URL in memory-backed `storage.session` so service-worker suspension does not lose it. |
+| `storage` | Keeps temporary manifest, job, and batch-queue state in memory-backed `storage.session` so service-worker suspension does not lose it. |
 | `offscreen` | Runs the download and MP4 assembly after the popup closes. |
 | `downloads` | Hands the completed MP4 to the browser download manager. |
-| `https://*.dlc.ntu.edu.tw/*` | Limits network access to NTU's video-player and media hosts. |
+| `https://*.dlc.ntu.edu.tw/*` | Limits network access to NTU's video media hosts. |
+| Optional `https://cool.ntu.edu.tw/*` | Granted only after the user starts a batch, so the extension can open the pasted pages and read their titles. |
 
 The extension has no access to general browsing history, cookies, passwords, or unrelated websites. It has no analytics, telemetry, advertising, or remote code. Captured signed URLs remain inside the browser session and are removed when the tab navigates or closes.
 
@@ -66,12 +73,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.1.2.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.0.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
 
 Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.1.2.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.0.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

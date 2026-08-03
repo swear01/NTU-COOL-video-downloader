@@ -1,0 +1,75 @@
+{
+  "extensionName": {
+    "message": "NTU COOL Video Downloader"
+  },
+  "extensionDescription": {
+    "message": "Download native NTU COOL videos as MP4 files."
+  },
+  "downloadVideo": {
+    "message": "Download video"
+  },
+  "lookingForVideo": {
+    "message": "Looking for a native NTU COOL video…"
+  },
+  "preparingDownload": {
+    "message": "Preparing download…"
+  },
+  "downloadingFragments": {
+    "message": "Downloading fragments… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1"
+      }
+    }
+  },
+  "combiningAudioVideo": {
+    "message": "Combining audio and video…"
+  },
+  "videoFound": {
+    "message": "Video found."
+  },
+  "noNativeVideo": {
+    "message": "No native NTU COOL video found. Refresh the video page and try again."
+  },
+  "downloadFailed": {
+    "message": "Download failed."
+  },
+  "batchTitle": {
+    "message": "COOL Batch Downloader"
+  },
+  "batchPlaceholder": {
+    "message": "Paste one URL per line"
+  },
+  "start": {
+    "message": "Start"
+  },
+  "pause": {
+    "message": "Pause"
+  },
+  "stop": {
+    "message": "Stop"
+  },
+  "contextOpenBatch": {
+    "message": "Open COOL Batch Downloader"
+  },
+  "invalidLinks": {
+    "message": "Remove invalid links."
+  },
+  "permissionDenied": {
+    "message": "NTU COOL access is required."
+  },
+  "batchFailed": {
+    "message": "$COUNT$ downloads failed.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "overallProgress": {
+    "message": "Overall download progress"
+  },
+  "untitledVideo": {
+    "message": "NTU COOL video"
+  }
+}

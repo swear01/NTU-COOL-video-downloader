@@ -78,6 +78,42 @@ export class ManifestStore {
   }
 }
 
+export function parseBatchUrls(text) {
+  const urls = [];
+  const invalid = [];
+  const seen = new Set();
+
+  for (const value of text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)) {
+    try {
+      const url = new URL(value);
+      if (url.origin !== 'https://cool.ntu.edu.tw' ||
+          !/^\/courses\/\d+\/modules\/items\/\d+\/?$/.test(url.pathname)) {
+        invalid.push(value);
+        continue;
+      }
+      url.pathname = url.pathname.replace(/\/$/, '');
+      url.search = '';
+      url.hash = '';
+      if (!seen.has(url.href)) {
+        seen.add(url.href);
+        urls.push(url.href);
+      }
+    } catch {
+      invalid.push(value);
+    }
+  }
+  return { urls, invalid };
+}
+
+export function batchProgress(items) {
+  if (items.length === 0) return 0;
+  const total = items.reduce((sum, item) => {
+    if (item.state === 'complete' || item.state === 'error') return sum + 100;
+    return sum + Math.max(0, Math.min(100, item.progress || 0));
+  }, 0);
+  return Math.round(total / items.length);
+}
+
 const filenameReplacements = {
   '<': '＜',
   '>': '＞',

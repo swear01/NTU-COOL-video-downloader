@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   AdaptiveConcurrency,
+  batchProgress,
   buildSegments,
   ManifestStore,
+  parseBatchUrls,
   parseIsoDuration,
   sanitizeFilename,
   selectTracks
@@ -81,6 +83,35 @@ test('sanitizes page titles into safe MP4 filenames', () => {
   assert.equal(sanitizeFilename('CON'), 'CON_.mp4');
   assert.equal(sanitizeFilename('nul.txt'), 'nul_.txt.mp4');
   assert.equal(sanitizeFilename('   '), 'ntu-cool-video.mp4');
+});
+
+test('normalizes, deduplicates, and validates direct NTU COOL video page URLs', () => {
+  assert.deepEqual(parseBatchUrls(`
+    https://cool.ntu.edu.tw/courses/58095/modules/items/2536772?from=modules#content
+    https://cool.ntu.edu.tw/courses/58095/modules/items/2536772/
+    https://cool.ntu.edu.tw/courses/61640/modules/items/2443678
+    https://cool.ntu.edu.tw/courses/58095/modules
+    https://example.com/courses/1/modules/items/2
+  `), {
+    urls: [
+      'https://cool.ntu.edu.tw/courses/58095/modules/items/2536772',
+      'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678'
+    ],
+    invalid: [
+      'https://cool.ntu.edu.tw/courses/58095/modules',
+      'https://example.com/courses/1/modules/items/2'
+    ]
+  });
+});
+
+test('reports overall batch progress by completed and active videos', () => {
+  assert.equal(batchProgress([]), 0);
+  assert.equal(batchProgress([
+    { state: 'complete', progress: 100 },
+    { state: 'downloading', progress: 50 },
+    { state: 'queued', progress: 0 },
+    { state: 'error', progress: 0 }
+  ]), 63);
 });
 
 test('finds an existing offscreen document on Chrome 116+', async () => {

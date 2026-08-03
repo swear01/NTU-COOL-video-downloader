@@ -1,0 +1,75 @@
+{
+  "extensionName": {
+    "message": "NTU COOL 影片下載器"
+  },
+  "extensionDescription": {
+    "message": "將 NTU COOL 原生影片下載為 MP4 檔案。"
+  },
+  "downloadVideo": {
+    "message": "下載影片"
+  },
+  "lookingForVideo": {
+    "message": "正在尋找 NTU COOL 原生影片…"
+  },
+  "preparingDownload": {
+    "message": "正在準備下載…"
+  },
+  "downloadingFragments": {
+    "message": "正在下載影片片段… $PERCENT$%",
+    "placeholders": {
+      "percent": {
+        "content": "$1"
+      }
+    }
+  },
+  "combiningAudioVideo": {
+    "message": "正在合併音訊與影片…"
+  },
+  "videoFound": {
+    "message": "已找到影片。"
+  },
+  "noNativeVideo": {
+    "message": "找不到 NTU COOL 原生影片，請重新整理影片頁面後再試一次。"
+  },
+  "downloadFailed": {
+    "message": "下載失敗。"
+  },
+  "batchTitle": {
+    "message": "COOL 批量下載"
+  },
+  "batchPlaceholder": {
+    "message": "貼上網址，一行一個"
+  },
+  "start": {
+    "message": "開始"
+  },
+  "pause": {
+    "message": "暫停"
+  },
+  "stop": {
+    "message": "停止"
+  },
+  "contextOpenBatch": {
+    "message": "開啟 COOL 批量下載"
+  },
+  "invalidLinks": {
+    "message": "請移除格式不正確的連結。"
+  },
+  "permissionDenied": {
+    "message": "需要 NTU COOL 網站存取權限。"
+  },
+  "batchFailed": {
+    "message": "$COUNT$ 支影片下載失敗。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "overallProgress": {
+    "message": "整體下載進度"
+  },
+  "untitledVideo": {
+    "message": "NTU COOL 影片"
+  }
+}
