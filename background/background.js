@@ -16,6 +16,12 @@ async function getBatch() {
   return (await chrome.storage.session.get('batch')).batch || null;
 }
 
+async function clearBatchJobs(batch) {
+  const jobIds = batch?.items.map(item => item.jobId).filter(Boolean) || [];
+  for (const jobId of jobIds) jobs.delete(jobId);
+  if (jobIds.length > 0) await chrome.storage.session.remove(jobIds.map(jobKey));
+}
+
 function mutateBatch(runId, mutation) {
   const operation = batchMutations.then(async () => {
     const batch = await getBatch();
@@ -30,6 +36,7 @@ function mutateBatch(runId, mutation) {
 
 function replaceBatch(batch) {
   const operation = batchMutations.then(async () => {
+    await clearBatchJobs(await getBatch());
     await chrome.storage.session.set({ batch });
     return batch;
   });
@@ -111,12 +118,10 @@ async function dispatchDownload({ jobId, tabId, manifestUrl, title }) {
   const source = jobId ?? tabId;
   await ensureOffscreenDocument();
   await setJob(source, { state: 'preparing', progress: 0 });
-  let batchState;
   if (jobId) {
     const active = await mutateBatch(null, batch =>
       ['running', 'paused'].includes(batch.state) && batch.items.some(item => item.jobId === jobId));
     if (!active?.value) throw new Error('Download canceled.');
-    batchState = active.batch.state;
   }
   await chrome.runtime.sendMessage({
     target: 'offscreen',
@@ -125,7 +130,9 @@ async function dispatchDownload({ jobId, tabId, manifestUrl, title }) {
     manifestUrl,
     filename: sanitizeFilename(title)
   });
-  if (jobId && batchState === 'paused') {
+  const current = jobId && await mutateBatch(null, batch =>
+    batch.items.some(item => item.jobId === jobId) ? batch.state : null);
+  if (current?.value === 'paused') {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'pause', jobId });
   }
 }
@@ -168,7 +175,11 @@ async function advanceBatch(runId) {
         return { action: 'open', item: { ...item } };
       });
       const action = selected?.value;
-      if (!action || ['stop', 'wait', 'complete'].includes(action.action)) return;
+      if (!action || ['stop', 'wait'].includes(action.action)) return;
+      if (action.action === 'complete') {
+        await clearBatchJobs(selected.batch);
+        return;
+      }
       if (action.action === 'download') {
         await startBatchItem(action.item);
         return;
@@ -373,6 +384,7 @@ async function stopBatch() {
   });
   if (!updated) return null;
   const item = updated.value;
+  await clearBatchJobs(updated.batch);
   if (item?.tabId != null) {
     await chrome.alarms.clear(batchAlarm(item.jobId));
     await chrome.tabs.remove(item.tabId).catch(() => {});

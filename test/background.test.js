@@ -532,3 +532,66 @@ test('keeps an offscreen job paused when setup finishes late', async () => {
   assert.deepEqual(batch.sent.slice(-2).map(message => message.action), ['download', 'pause']);
   assert.equal(store.batch.state, 'paused');
 });
+
+test('does not apply a stale pause after setup resumes', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  let finishSetup;
+  let finishDispatch;
+  let dispatchStarted;
+  const dispatching = new Promise(resolve => { dispatchStarted = resolve; });
+  batch.chromeApi.offscreen.createDocument = () => new Promise(resolve => { finishSetup = resolve; });
+  batch.chromeApi.runtime.sendMessage = async message => {
+    batch.sent.push(message);
+    if (message.action === 'download') {
+      dispatchStarted();
+      await new Promise(resolve => { finishDispatch = resolve; });
+    }
+    return {};
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?resume-setup=${Date.now()}`);
+  await send(batch.chromeApi, {
+    action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
+  });
+  const manifest = batch.chromeApi.webRequest.onBeforeRequest.listener({
+    tabId: batch.createdTabs[0].id,
+    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
+  });
+  await new Promise(resolve => setTimeout(resolve));
+  await send(batch.chromeApi, { action: 'pauseBatch' });
+  finishSetup();
+  await dispatching;
+
+  await send(batch.chromeApi, { action: 'resumeBatch' });
+  finishDispatch();
+  await manifest;
+
+  assert.equal(batch.sent.at(-1).action, 'resume');
+  assert.equal(store.batch.state, 'running');
+});
+
+test('removes obsolete batch job records on Stop and replacement', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?job-cleanup=${Date.now()}`);
+  await send(batch.chromeApi, {
+    action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
+  });
+  await batch.chromeApi.webRequest.onBeforeRequest.listener({
+    tabId: batch.createdTabs[0].id,
+    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
+  });
+  const oldJobId = store.batch.items[0].jobId;
+  assert.ok(store[`job:${oldJobId}`]);
+
+  await send(batch.chromeApi, { action: 'stopBatch' });
+  assert.equal(store[`job:${oldJobId}`], undefined);
+  store[`job:${oldJobId}`] = { state: 'error' };
+  await send(batch.chromeApi, {
+    action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/61640/modules/items/2443678']
+  });
+
+  assert.equal(store[`job:${oldJobId}`], undefined);
+});
