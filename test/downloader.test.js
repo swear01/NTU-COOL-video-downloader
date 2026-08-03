@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { downloadAdaptive } from '../utils/downloader.js';
+import { DownloadControl, downloadAdaptive } from '../utils/downloader.js';
 
 test('aborts remaining fragment requests after a terminal failure', async () => {
   const originalFetch = globalThis.fetch;
@@ -53,5 +53,147 @@ test('retries a failed early fragment before queued later fragments', async () =
     assert.equal(starts[8], 'early');
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('pauses active requests and resumes unfinished fragments', async () => {
+  const originalFetch = globalThis.fetch;
+  const control = new DownloadControl();
+  let starts = 0;
+  let received = 0;
+  globalThis.fetch = (_url, { signal }) => {
+    starts += 1;
+    if (starts > 1) return Promise.resolve({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(1)
+    });
+    return new Promise((resolve, reject) => signal.addEventListener('abort', () => {
+      reject(signal.reason);
+    }, { once: true }));
+  };
+
+  try {
+    const downloading = downloadAdaptive([{ url: 'fragment' }], () => { received += 1; }, undefined, control);
+    await new Promise(resolve => setTimeout(resolve));
+    control.pause();
+    await new Promise(resolve => setTimeout(resolve));
+    assert.equal(received, 0);
+    control.resume();
+    await downloading;
+    assert.equal(starts, 2);
+    assert.equal(received, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('cancels active fragment downloads', async () => {
+  const originalFetch = globalThis.fetch;
+  const control = new DownloadControl();
+  globalThis.fetch = (_url, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+
+  try {
+    const downloading = downloadAdaptive([{ url: 'fragment' }], () => {}, undefined, control);
+    await new Promise(resolve => setTimeout(resolve));
+    control.cancel();
+    await assert.rejects(downloading, /canceled/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('rejects a download that was canceled before it started', { timeout: 100 }, async () => {
+  const control = new DownloadControl();
+  control.cancel();
+  await assert.rejects(
+    downloadAdaptive([{ url: 'fragment' }], () => {}, undefined, control),
+    /canceled/i
+  );
+});
+
+test('passes the final response URL to the fragment consumer', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    url: 'https://media.example/redirected/manifest.mpd',
+    arrayBuffer: async () => new ArrayBuffer(1)
+  });
+  let finalUrl;
+
+  try {
+    await downloadAdaptive([{ url: 'https://media.example/manifest.mpd' }],
+      (_task, _buffer, responseUrl) => { finalUrl = responseUrl; });
+    assert.equal(finalUrl, 'https://media.example/redirected/manifest.mpd');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('reports download speed while fragments complete', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = performance.now;
+  let now = 0;
+  performance.now = () => now;
+  globalThis.fetch = async () => ({
+    ok: true,
+    arrayBuffer: async () => {
+      now += 1000;
+      return new ArrayBuffer(2048);
+    }
+  });
+  const updates = [];
+
+  try {
+    await downloadAdaptive(
+      [{ url: 'a' }],
+      () => {},
+      progress => updates.push(progress)
+    );
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].completed, 1);
+    assert.equal(updates[0].total, 1);
+    assert.equal(updates[0].bytesPerSecond, 2048);
+  } finally {
+    globalThis.fetch = originalFetch;
+    performance.now = originalNow;
+  }
+});
+
+test('blends reported speed after a measurement window resets', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = performance.now;
+  let now = 0;
+  let started = 0;
+  let gate = Promise.resolve();
+  performance.now = () => now;
+  // Serialize fragments so the post-reset leftover timing is deterministic.
+  globalThis.fetch = () => new Promise(resolve => {
+    gate = gate.then(() => {
+      started += 1;
+      const delay = started <= 16 ? 1000 : 1;
+      resolve({
+        ok: true,
+        arrayBuffer: async () => {
+          now += delay;
+          return new ArrayBuffer(1024);
+        }
+      });
+    });
+  });
+  const updates = [];
+
+  try {
+    await downloadAdaptive(
+      Array.from({ length: 17 }, (_, index) => ({ url: `fragment-${index}` })),
+      () => {},
+      progress => updates.push(progress.bytesPerSecond)
+    );
+    assert.equal(updates[15], 1024);
+    assert.equal(updates[16], Math.round(1024 * (15 / 16) + (1024 / 0.001) * (1 / 16)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    performance.now = originalNow;
   }
 });

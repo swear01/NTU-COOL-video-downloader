@@ -1,6 +1,15 @@
+import { formatSpeed } from '../utils/core.js';
+
 const button = document.getElementById('download');
 const progress = document.getElementById('progress');
 const status = document.getElementById('status');
+const title = document.getElementById('title');
+const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
+document.documentElement.lang = chrome.i18n.getUILanguage();
+document.title = t('extensionName');
+title.textContent = t('extensionName');
+button.textContent = t('downloadVideo');
+status.textContent = t('lookingForVideo');
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
 function show(message, error = false) {
@@ -10,24 +19,24 @@ function show(message, error = false) {
 
 function render(job) {
   if (!job) return;
-  if (job.state === 'preparing') show('Preparing download…');
+  if (job.state === 'preparing') show(t('preparingDownload'));
   if (job.state === 'downloading') {
     progress.hidden = false;
     progress.value = job.progress;
-    show(`Downloading fragments… ${job.progress}%`);
+    show(t('downloadingFragments', [String(job.progress), formatSpeed(job.bytesPerSecond)]));
   }
-  if (job.state === 'processing') show('Combining audio and video…');
-  if (job.state === 'saving') show('Sending file to browser downloads…');
+  if (job.state === 'processing') show(t('combiningAudioVideo'));
+  if (job.state === 'saving') show('');
   if (job.state === 'complete') show('');
-  if (job.state === 'error') show(job.error || 'Download failed.', true);
+  if (job.state === 'error') show(job.errorKey ? t(job.errorKey) : job.error || t('downloadFailed'), true);
   button.disabled = !['complete', 'error'].includes(job.state);
 }
 
 async function refresh() {
   const response = await chrome.runtime.sendMessage({ action: 'getStatus', tabId: tab.id });
   button.disabled = !response.found;
-  if (!response.found) show('No native NTU COOL video found. Refresh the video page and try again.', true);
-  else if (!response.job) show('Video found.');
+  if (!response.found) show(t('noNativeVideo'), true);
+  else if (!response.job) show(t('videoFound'));
   if (response.found) render(response.job);
 }
 
@@ -35,13 +44,13 @@ button.addEventListener('click', async () => {
   button.disabled = true;
   progress.hidden = false;
   progress.value = 0;
-  show('Preparing download…');
+  show(t('preparingDownload'));
   const response = await chrome.runtime.sendMessage({
     action: 'startDownload',
     tabId: tab.id,
     title: tab.title
   });
-  if (!response.success) show(response.error || 'Download failed.', true);
+  if (!response.success) show(response.errorKey ? t(response.errorKey) : response.error || t('downloadFailed'), true);
 });
 
 await refresh();

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title></title>
+  <style>
+    :root { color-scheme: light dark; --background: #fff; --foreground: #202124; --surface: #f1f3f4; --border: #9aa0a6; --button: #007da5; --button-hover: #006487; --disabled: #9aa0a6; --error: #b3261e; }
+    @media (prefers-color-scheme: dark) { :root { --background: #202124; --foreground: #f1f3f4; --surface: #292a2d; --border: #5f6368; --button: #00a9d6; --button-hover: #32b9dd; --disabled: #5f6368; --error: #ffb4ab; } }
+    * { box-sizing: border-box; }
+    body { max-width: 720px; margin: 0 auto; padding: 48px 24px; color: var(--foreground); background: var(--background); font: 16px system-ui, sans-serif; }
+    h1 { margin: 0 0 24px; font-size: 28px; }
+    textarea { width: 100%; min-height: 260px; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: inherit; background: var(--surface); font: inherit; line-height: 1.5; }
+    textarea:focus-visible, button:focus-visible { outline: 2px solid var(--button); outline-offset: 2px; }
+    textarea.invalid { border-color: var(--error); }
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+    button { border: 0; border-radius: 8px; padding: 11px; color: white; background: var(--button); font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover:not(:disabled) { background: var(--button-hover); }
+    button:disabled { cursor: default; background: var(--disabled); }
+    progress { width: 100%; height: 14px; margin-top: 24px; accent-color: var(--button); }
+    #detail { min-height: 1.4em; margin: 10px 0 0; color: var(--foreground); }
+    #error { min-height: 1.4em; margin: 10px 0 0; color: var(--error); }
+  </style>
+</head>
+<body>
+  <h1 id="title"></h1>
+  <textarea id="urls" spellcheck="false"></textarea>
+  <div class="controls">
+    <button id="start"></button>
+    <button id="pause" disabled></button>
+    <button id="stop" disabled></button>
+  </div>
+  <progress id="progress" max="100" value="0"></progress>
+  <p id="detail"></p>
+  <p id="error" role="alert" aria-live="polite"></p>
+  <script type="module" src="batch.js"></script>
+</body>
+</html>

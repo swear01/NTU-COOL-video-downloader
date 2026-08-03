@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 
 import {
   AdaptiveConcurrency,
+  activeBatchItem,
+  batchProgress,
   buildSegments,
+  formatSpeed,
   ManifestStore,
+  parseBatchUrls,
   parseIsoDuration,
   sanitizeFilename,
   selectTracks
@@ -81,6 +85,48 @@ test('sanitizes page titles into safe MP4 filenames', () => {
   assert.equal(sanitizeFilename('CON'), 'CON_.mp4');
   assert.equal(sanitizeFilename('nul.txt'), 'nul_.txt.mp4');
   assert.equal(sanitizeFilename('   '), 'ntu-cool-video.mp4');
+});
+
+test('normalizes, deduplicates, and validates direct NTU COOL video page URLs', () => {
+  assert.deepEqual(parseBatchUrls(`
+    https://cool.ntu.edu.tw/courses/58095/modules/items/2536772?from=modules#content
+    https://cool.ntu.edu.tw/courses/58095/modules/items/2536772/
+    https://cool.ntu.edu.tw/courses/61640/modules/items/2443678
+    https://cool.ntu.edu.tw/courses/58095/modules
+    https://example.com/courses/1/modules/items/2
+  `), {
+    urls: [
+      'https://cool.ntu.edu.tw/courses/58095/modules/items/2536772',
+      'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678'
+    ],
+    invalid: [
+      'https://cool.ntu.edu.tw/courses/58095/modules',
+      'https://example.com/courses/1/modules/items/2'
+    ]
+  });
+});
+
+test('reports overall batch progress by completed and active videos', () => {
+  assert.equal(batchProgress([]), 0);
+  assert.equal(batchProgress([
+    { state: 'complete', progress: 100 },
+    { state: 'downloading', progress: 50 },
+    { state: 'queued', progress: 0 },
+    { state: 'error', progress: 0 }
+  ]), 63);
+});
+
+test('finds the active batch item and formats download speed', () => {
+  assert.equal(activeBatchItem([
+    { state: 'complete', progress: 100 },
+    { state: 'downloading', progress: 40, bytesPerSecond: 1500 },
+    { state: 'queued', progress: 0 }
+  ]).index, 1);
+  assert.equal(activeBatchItem([{ state: 'queued', progress: 0 }]), null);
+  assert.equal(formatSpeed(0), '0 B/s');
+  assert.equal(formatSpeed(900), '900 B/s');
+  assert.equal(formatSpeed(1536), '1.5 KB/s');
+  assert.equal(formatSpeed(2 * 1024 * 1024), '2.0 MB/s');
 });
 
 test('finds an existing offscreen document on Chrome 116+', async () => {
