@@ -18,7 +18,7 @@ function render(job) {
   }
   if (job.state === 'processing') show('Combining audio and video…');
   if (job.state === 'saving') show('Sending file to browser downloads…');
-  if (job.state === 'complete') show('Sent to browser downloads.');
+  if (job.state === 'complete') show('');
   if (job.state === 'error') show(job.error || 'Download failed.', true);
   button.disabled = !['complete', 'error'].includes(job.state);
 }
