@@ -121,6 +121,7 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
           windowBytes = 0;
           windowCompleted = 0;
           windowStarted = performance.now();
+          lastThroughput = null;
           return;
         }
         if (control.state === 'canceled') return stop(new Error('Download canceled.'));
