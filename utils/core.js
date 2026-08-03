@@ -114,6 +114,20 @@ export function batchProgress(items) {
   return Math.round(total / items.length);
 }
 
+const activeBatchStates = new Set(['opening', 'preparing', 'downloading', 'processing', 'saving']);
+
+export function activeBatchItem(items) {
+  const index = items.findIndex(item => activeBatchStates.has(item.state));
+  return index === -1 ? null : { index, item: items[index] };
+}
+
+export function formatSpeed(bytesPerSecond) {
+  const rate = Math.max(0, Number(bytesPerSecond) || 0);
+  if (rate < 1024) return `${Math.round(rate)} B/s`;
+  if (rate < 1024 * 1024) return `${(rate / 1024).toFixed(1)} KB/s`;
+  return `${(rate / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
 const filenameReplacements = {
   '<': '＜',
   '>': '＞',

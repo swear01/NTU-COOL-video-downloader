@@ -1,3 +1,5 @@
+import { formatSpeed } from '../utils/core.js';
+
 const button = document.getElementById('download');
 const progress = document.getElementById('progress');
 const status = document.getElementById('status');
@@ -21,7 +23,7 @@ function render(job) {
   if (job.state === 'downloading') {
     progress.hidden = false;
     progress.value = job.progress;
-    show(t('downloadingFragments', String(job.progress)));
+    show(t('downloadingFragments', [String(job.progress), formatSpeed(job.bytesPerSecond)]));
   }
   if (job.state === 'processing') show(t('combiningAudioVideo'));
   if (job.state === 'saving') show('');

@@ -211,9 +211,10 @@ test('opens each pasted COOL page in the background and starts its captured mani
 
   await send(batch.chromeApi, {
     target: 'background', action: 'progress', jobId: store.batch.items[0].jobId,
-    status: { state: 'downloading', progress: 42 }
+    status: { state: 'downloading', progress: 42, bytesPerSecond: 4096 }
   });
   assert.equal(store.batch.items[0].progress, 42);
+  assert.equal(store.batch.items[0].bytesPerSecond, 4096);
 });
 
 test('pauses, resumes, and stops the active batch download', async () => {

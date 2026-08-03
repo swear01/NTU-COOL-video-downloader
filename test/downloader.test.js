@@ -130,3 +130,33 @@ test('passes the final response URL to the fragment consumer', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test('reports download speed while fragments complete', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = performance.now;
+  let now = 0;
+  performance.now = () => now;
+  globalThis.fetch = async () => ({
+    ok: true,
+    arrayBuffer: async () => {
+      now += 1000;
+      return new ArrayBuffer(2048);
+    }
+  });
+  const updates = [];
+
+  try {
+    await downloadAdaptive(
+      [{ url: 'a' }],
+      () => {},
+      progress => updates.push(progress)
+    );
+    assert.equal(updates.length, 1);
+    assert.equal(updates[0].completed, 1);
+    assert.equal(updates[0].total, 1);
+    assert.equal(updates[0].bytesPerSecond, 2048);
+  } finally {
+    globalThis.fetch = originalFetch;
+    performance.now = originalNow;
+  }
+});

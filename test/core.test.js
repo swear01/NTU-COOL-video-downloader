@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   AdaptiveConcurrency,
+  activeBatchItem,
   batchProgress,
   buildSegments,
+  formatSpeed,
   ManifestStore,
   parseBatchUrls,
   parseIsoDuration,
@@ -112,6 +114,19 @@ test('reports overall batch progress by completed and active videos', () => {
     { state: 'queued', progress: 0 },
     { state: 'error', progress: 0 }
   ]), 63);
+});
+
+test('finds the active batch item and formats download speed', () => {
+  assert.equal(activeBatchItem([
+    { state: 'complete', progress: 100 },
+    { state: 'downloading', progress: 40, bytesPerSecond: 1500 },
+    { state: 'queued', progress: 0 }
+  ]).index, 1);
+  assert.equal(activeBatchItem([{ state: 'queued', progress: 0 }]), null);
+  assert.equal(formatSpeed(0), '0 B/s');
+  assert.equal(formatSpeed(900), '900 B/s');
+  assert.equal(formatSpeed(1536), '1.5 KB/s');
+  assert.equal(formatSpeed(2 * 1024 * 1024), '2.0 MB/s');
 });
 
 test('finds an existing offscreen document on Chrome 116+', async () => {

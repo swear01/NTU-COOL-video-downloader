@@ -96,19 +96,23 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
         completed += 1;
         windowCompleted += 1;
         windowBytes += buffer.byteLength;
+        const elapsed = Math.max(performance.now() - windowStarted, 1) / 1000;
+        const bytesPerSecond = Math.round(windowBytes / elapsed);
 
         if (windowCompleted >= 16) {
-          const elapsed = Math.max(performance.now() - windowStarted, 1) / 1000;
           adaptive.observe({ throughput: windowBytes / elapsed, completed: windowCompleted, errors: 0 });
           windowBytes = 0;
           windowCompleted = 0;
           windowStarted = performance.now();
         }
-        onProgress({ completed, total: tasks.length, concurrency: adaptive.value });
+        onProgress({ completed, total: tasks.length, concurrency: adaptive.value, bytesPerSecond });
       } catch (error) {
         if (stopped) return;
         if (control.state === 'paused') {
           queue.unshift(task);
+          windowBytes = 0;
+          windowCompleted = 0;
+          windowStarted = performance.now();
           return;
         }
         if (control.state === 'canceled') return stop(new Error('Download canceled.'));
