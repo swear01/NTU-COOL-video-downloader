@@ -2,11 +2,11 @@
 
 ## Distribution
 
-- Visibility: Unlisted
+- Visibility: Public
 - Regions: All regions
 - Pricing: Free
 - Primary language: Chinese (Traditional)
-- Category: Productivity
+- Category: Tools
 
 ## Name
 
@@ -73,4 +73,4 @@ https://github.com/swear01/NTU-COOL-video-downloader/issues
 4. Select `Download video` and keep the browser open.
 5. Confirm that progress is displayed and that the completed MP4 appears in browser downloads with video and audio.
 
-The extension does not automate login or bypass access control. Test credentials must therefore be supplied privately in the Developer Dashboard when submitting the item for review.
+The extension does not automate login or bypass access control. Never commit personal credentials to this repository; any reviewer credentials must be a dedicated authorized test account supplied only through the Developer Dashboard.
