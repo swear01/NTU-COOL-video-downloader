@@ -15,10 +15,13 @@
     "message": "正在準備下載…"
   },
   "downloadingFragments": {
-    "message": "正在下載影片片段… $PERCENT$%",
+    "message": "正在下載影片片段… $PERCENT$% · $SPEED$",
     "placeholders": {
       "percent": {
         "content": "$1"
+      },
+      "speed": {
+        "content": "$2"
       }
     }
   },
@@ -68,6 +71,23 @@
   },
   "overallProgress": {
     "message": "整體下載進度"
+  },
+  "batchProgressDetail": {
+    "message": "影片 $CURRENT$/$TOTAL$ · $PERCENT$% · $SPEED$",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "percent": {
+        "content": "$3"
+      },
+      "speed": {
+        "content": "$4"
+      }
+    }
   },
   "untitledVideo": {
     "message": "NTU COOL 影片"

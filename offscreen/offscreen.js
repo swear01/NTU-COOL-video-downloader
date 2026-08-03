@@ -44,7 +44,8 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
         status: {
           state: 'downloading',
           progress: Math.round(progress.completed / progress.total * 100),
-          concurrency: progress.concurrency
+          concurrency: progress.concurrency,
+          bytesPerSecond: progress.bytesPerSecond || 0
         }
       }),
       control

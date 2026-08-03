@@ -15,10 +15,13 @@
     "message": "Preparing download…"
   },
   "downloadingFragments": {
-    "message": "Downloading fragments… $PERCENT$%",
+    "message": "Downloading fragments… $PERCENT$% · $SPEED$",
     "placeholders": {
       "percent": {
         "content": "$1"
+      },
+      "speed": {
+        "content": "$2"
       }
     }
   },
@@ -68,6 +71,23 @@
   },
   "overallProgress": {
     "message": "Overall download progress"
+  },
+  "batchProgressDetail": {
+    "message": "Video $CURRENT$/$TOTAL$ · $PERCENT$% · $SPEED$",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "percent": {
+        "content": "$3"
+      },
+      "speed": {
+        "content": "$4"
+      }
+    }
   },
   "untitledVideo": {
     "message": "NTU COOL video"

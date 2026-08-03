@@ -1,10 +1,11 @@
-import { batchProgress, parseBatchUrls } from '../utils/core.js';
+import { activeBatchItem, batchProgress, formatSpeed, parseBatchUrls } from '../utils/core.js';
 
 const urls = document.getElementById('urls');
 const start = document.getElementById('start');
 const pause = document.getElementById('pause');
 const stop = document.getElementById('stop');
 const progress = document.getElementById('progress');
+const detail = document.getElementById('detail');
 const error = document.getElementById('error');
 const t = (key, substitutions) => chrome.i18n.getMessage(key, substitutions);
 let batch = null;
@@ -25,12 +26,22 @@ function render(next) {
   const running = state === 'running';
   const paused = state === 'paused';
   const active = running || paused;
-  progress.value = batchProgress(batch?.items || []);
+  const items = batch?.items || [];
+  progress.value = batchProgress(items);
+  const current = activeBatchItem(items);
+  detail.textContent = current
+    ? t('batchProgressDetail', [
+      String(current.index + 1),
+      String(items.length),
+      String(Math.round(current.item.progress || 0)),
+      formatSpeed(current.item.bytesPerSecond)
+    ])
+    : '';
   urls.disabled = active;
   start.disabled = running || (!paused && !urls.value.trim());
   pause.disabled = !running;
   stop.disabled = !active;
-  const failed = batch?.items?.filter(item => item.state === 'error').length || 0;
+  const failed = items.filter(item => item.state === 'error').length;
   error.textContent = batch?.errorKey
     ? t(batch.errorKey)
     : state === 'complete' && failed > 0 ? t('batchFailed', String(failed)) : '';
@@ -78,6 +89,7 @@ pause.addEventListener('click', async () => {
 stop.addEventListener('click', async () => {
   await chrome.runtime.sendMessage({ action: 'stopBatch' });
   progress.value = 0;
+  detail.textContent = '';
   await refresh();
 });
 

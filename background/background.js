@@ -51,6 +51,7 @@ async function updateBatchJob(jobId, job) {
     if (!item || !['running', 'paused'].includes(batch.state)) return null;
     item.state = job.state;
     item.progress = job.progress || 0;
+    item.bytesPerSecond = job.bytesPerSecond || 0;
     item.errorKey = job.errorKey;
     return { runId: batch.runId, advance: batch.state === 'running' && ['complete', 'error'].includes(job.state) };
   });
