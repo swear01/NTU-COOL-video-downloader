@@ -7,6 +7,8 @@
 
 [繁體中文](README.zh-TW.md)
 
+[Privacy Policy](PRIVACY.md)
+
 A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or external service.
 
 ## Features
@@ -26,7 +28,7 @@ It supports the current native NTU COOL DASH player. YouTube embeds, login autom
 
 ## Install
 
-1. Download the ZIP and `SHA256SUMS` from the [latest release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest), then unzip it.
+1. Download the ZIP and `SHA256SUMS` from the [latest release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest), then extract the ZIP into a new folder.
 2. Open the browser's extensions page, such as `chrome://extensions`.
 3. Enable **Developer mode**.
 4. Choose **Load unpacked** and select the unzipped folder.
@@ -64,12 +66,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.1.0.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.1.1.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
 
 Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.1.0.zip \
+gh attestation verify NTU-COOL-video-downloader-1.1.1.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 
@@ -84,6 +86,8 @@ npm run package
 ```
 
 MP4Box.js 2.4.1 is the only runtime dependency. Its browser modules and BSD-3-Clause license are vendored under `vendor/`, so users do not need Node.js or npm. All other code uses browser APIs and the JavaScript standard library.
+
+The generated ZIP follows Chrome's package layout with `manifest.json` at the archive root. The same ZIP can be uploaded to a compatible extension dashboard or extracted for **Load unpacked** installation.
 
 This independent project is not affiliated with or endorsed by National Taiwan University. The NTU COOL name and logo belong to their respective owner and are used only to identify compatibility.
 
