@@ -48,6 +48,7 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
   let windowBytes = 0;
   let windowCompleted = 0;
   let windowStarted = performance.now();
+  let lastThroughput = null;
   let stopped = false;
   const requests = new Set();
 
@@ -97,10 +98,17 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
         windowCompleted += 1;
         windowBytes += buffer.byteLength;
         const elapsed = Math.max(performance.now() - windowStarted, 1) / 1000;
-        const bytesPerSecond = Math.round(windowBytes / elapsed);
+        const currentSpeed = windowBytes / elapsed;
+        // Blend with the last full window so concurrent leftovers after a reset don't spike the UI.
+        const bytesPerSecond = Math.round(
+          lastThroughput !== null
+            ? lastThroughput * (1 - windowCompleted / 16) + currentSpeed * (windowCompleted / 16)
+            : currentSpeed
+        );
 
         if (windowCompleted >= 16) {
-          adaptive.observe({ throughput: windowBytes / elapsed, completed: windowCompleted, errors: 0 });
+          adaptive.observe({ throughput: currentSpeed, completed: windowCompleted, errors: 0 });
+          lastThroughput = currentSpeed;
           windowBytes = 0;
           windowCompleted = 0;
           windowStarted = performance.now();

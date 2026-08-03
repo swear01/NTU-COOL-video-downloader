@@ -160,3 +160,40 @@ test('reports download speed while fragments complete', async () => {
     performance.now = originalNow;
   }
 });
+
+test('blends reported speed after a measurement window resets', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalNow = performance.now;
+  let now = 0;
+  let started = 0;
+  let gate = Promise.resolve();
+  performance.now = () => now;
+  // Serialize fragments so the post-reset leftover timing is deterministic.
+  globalThis.fetch = () => new Promise(resolve => {
+    gate = gate.then(() => {
+      started += 1;
+      const delay = started <= 16 ? 1000 : 1;
+      resolve({
+        ok: true,
+        arrayBuffer: async () => {
+          now += delay;
+          return new ArrayBuffer(1024);
+        }
+      });
+    });
+  });
+  const updates = [];
+
+  try {
+    await downloadAdaptive(
+      Array.from({ length: 17 }, (_, index) => ({ url: `fragment-${index}` })),
+      () => {},
+      progress => updates.push(progress.bytesPerSecond)
+    );
+    assert.equal(updates[15], 1024);
+    assert.equal(updates[16], Math.round(1024 * (15 / 16) + (1024 / 0.001) * (1 / 16)));
+  } finally {
+    globalThis.fetch = originalFetch;
+    performance.now = originalNow;
+  }
+});
