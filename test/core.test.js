@@ -12,11 +12,10 @@ import {
 import { hasOffscreenDocument } from '../utils/offscreen.js';
 import { mergeTemplateValues } from '../utils/mpd.js';
 import {
-  mediaDuration,
-  releaseMdatBuffers,
-  scaleDuration,
-  secondsToTimescale
+  Remuxer,
+  releaseMdatBuffers
 } from '../utils/remuxer.js';
+import { createFile, MP4BoxBuffer } from '../vendor/mp4box.all.mjs';
 
 test('selects the highest-resolution video and its matching audio', () => {
   const tracks = selectTracks([
@@ -76,7 +75,11 @@ test('auto concurrency grows on useful throughput gains and halves on throttling
 });
 
 test('sanitizes page titles into safe MP4 filenames', () => {
-  assert.equal(sanitizeFilename('Two-View Geometry: Epipolar / Geometry'), 'Two-View Geometry Epipolar Geometry.mp4');
+  assert.equal(sanitizeFilename('6/5 Counting 3'), '6／5 Counting 3.mp4');
+  assert.equal(sanitizeFilename('Two-View Geometry: Epipolar / Geometry'), 'Two-View Geometry： Epipolar ／ Geometry.mp4');
+  assert.equal(sanitizeFilename('<>:"/\\|?*'), '＜＞：＂／\uFF3C｜？＊.mp4');
+  assert.equal(sanitizeFilename('CON'), 'CON_.mp4');
+  assert.equal(sanitizeFilename('nul.txt'), 'nul_.txt.mp4');
   assert.equal(sanitizeFilename('   '), 'ntu-cool-video.mp4');
 });
 
@@ -106,12 +109,33 @@ test('inherits missing representation SegmentTemplate attributes', () => {
   });
 });
 
-test('converts media duration to the movie timescale', () => {
-  assert.equal(scaleDuration(480000, 48000, 600), 6000);
-  assert.equal(scaleDuration(153600, 15360, 600), 6000);
-  assert.equal(secondsToTimescale(3976.672, 600), 2386003);
-  assert.equal(mediaDuration(0, 3976.672, 48000), 190880256);
-  assert.equal(mediaDuration(480000, 3976.672, 48000), 480000);
+test('leaves fragmented MP4 header durations at zero', () => {
+  const avcDecoderConfigRecord = Uint8Array.from(Buffer.from(
+    'AWQAKP/hABtnZAAorNkAeAIn5cBEAAADAAQAAAMA8DxgxlgBAAZo6+LEyEw=',
+    'base64'
+  )).buffer;
+  const video = createFile();
+  video.init({ timescale: 600, duration: 6000 });
+  video.addTrack({
+    type: 'avc1', hdlr: 'vide', timescale: 15360, duration: 153600,
+    media_duration: 153600, width: 16, height: 16, avcDecoderConfigRecord
+  });
+  const audio = createFile();
+  audio.init({ timescale: 600, duration: 6000 });
+  audio.addTrack({
+    type: 'mp4a', hdlr: 'soun', timescale: 48000, duration: 480000,
+    media_duration: 480000, channel_count: 2, samplesize: 16, samplerate: 48000
+  });
+
+  const output = new Remuxer(video.getBuffer().buffer, audio.getBuffer().buffer).finish();
+  const parsed = createFile();
+  let info;
+  parsed.onReady = value => { info = value; };
+  parsed.appendBuffer(MP4BoxBuffer.fromArrayBuffer(output, 0));
+  parsed.flush();
+
+  assert.equal(info.duration, 0);
+  assert.deepEqual(info.tracks.map(track => track.duration), [0, 0]);
 });
 
 test('releases consumed source mdat buffers after extracting samples', () => {

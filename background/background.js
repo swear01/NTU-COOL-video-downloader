@@ -4,6 +4,7 @@ import { hasOffscreenDocument } from '../utils/offscreen.js';
 const manifests = new ManifestStore();
 const jobs = new Map();
 const downloads = new Map();
+const filenames = new Map();
 const storageKey = tabId => `manifest:${tabId}`;
 const jobKey = tabId => `job:${tabId}`;
 const downloadKey = downloadId => `download:${downloadId}`;
@@ -80,12 +81,18 @@ chrome.downloads.onChanged.addListener(async delta => {
   if (!download) return;
   if (delta.state.current === 'complete' || delta.state.current === 'interrupted') {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
+    filenames.delete(download.url);
     await setJob(download.tabId, delta.state.current === 'complete'
       ? { state: 'complete', progress: 100 }
       : { state: 'error', error: delta.error?.current || 'Browser download was interrupted.' });
     downloads.delete(delta.id);
     await chrome.storage.session.remove(downloadKey(delta.id));
   }
+});
+
+chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+  const filename = filenames.get(item.url);
+  suggest(filename ? { filename, conflictAction: 'uniquify' } : undefined);
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -97,6 +104,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.target === 'background' && message.action === 'ready') {
     (async () => {
       await setJob(message.tabId, { state: 'saving', progress: 100 });
+      filenames.set(message.url, message.filename);
       const downloadId = await chrome.downloads.download({
         url: message.url,
         filename: message.filename,
@@ -105,6 +113,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await setDownload(downloadId, { url: message.url, tabId: message.tabId });
       sendResponse({ success: true });
     })().catch(async error => {
+      filenames.delete(message.url);
       await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });
       await setJob(message.tabId, { state: 'error', error: error.message });
       sendResponse({ success: false });

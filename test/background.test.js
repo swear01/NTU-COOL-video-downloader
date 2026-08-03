@@ -24,7 +24,7 @@ function mockChrome(store, download = async () => 7) {
       onMessage: event(),
       async sendMessage(message) { sent.push(message); return {}; }
     },
-    downloads: { download, onChanged: event() },
+    downloads: { download, onChanged: event(), onDeterminingFilename: event() },
     webRequest: { onBeforeRequest: event() },
     tabs: { onUpdated: event(), onRemoved: event() },
     offscreen: { async createDocument() {} }
@@ -93,4 +93,31 @@ test('persists an offscreen dispatch failure as a terminal job', async () => {
   await send(failed.chromeApi, { action: 'startDownload', tabId: 6, title: 'Lecture' });
 
   assert.deepEqual(store['job:6'], { state: 'error', error: 'offscreen crashed' });
+});
+
+test('preserves the active NTU COOL page title in the download filename', async () => {
+  const store = { 'manifest:7': 'https://media.example/manifest.mpd' };
+  const ready = mockChrome(store);
+  globalThis.chrome = ready.chromeApi;
+  await import(`../background/background.js?filename=${Date.now()}`);
+  await send(ready.chromeApi, { action: 'startDownload', tabId: 7, title: '6/5 Counting 3' });
+
+  assert.equal(ready.sent[0].filename, '6／5 Counting 3.mp4');
+});
+
+test('overrides Chrome blob filenames with the active NTU COOL page title', async () => {
+  const store = {};
+  const named = mockChrome(store);
+  globalThis.chrome = named.chromeApi;
+  await import(`../background/background.js?determining=${Date.now()}`);
+  await send(named.chromeApi, {
+    target: 'background', action: 'ready', tabId: 8,
+    filename: '6／5 Counting 3.mp4', url: 'blob:named'
+  });
+  let suggestion;
+  named.chromeApi.downloads.onDeterminingFilename.listener(
+    { url: 'blob:named' }, value => { suggestion = value; }
+  );
+
+  assert.deepEqual(suggestion, { filename: '6／5 Counting 3.mp4', conflictAction: 'uniquify' });
 });
