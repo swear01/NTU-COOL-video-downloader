@@ -7,6 +7,8 @@
 
 [繁體中文](README.zh-TW.md)
 
+[Privacy Policy](PRIVACY.md)
+
 A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or external service.
 
 ## Features

@@ -7,6 +7,8 @@
 
 [English](README.md)
 
+[隱私權政策](PRIVACY.md)
+
 小而美的 Chromium 擴充套件，用來把 NTU COOL 原生影片下載成 MP4。它直接使用瀏覽器中已開啟的登入狀態，不做登入自動化、不需要本機 helper，也不使用外部服務。
 
 ## 功能

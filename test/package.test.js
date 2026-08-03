@@ -11,6 +11,7 @@ test('packages the extension with manifest.json at the ZIP root', () => {
   ], { encoding: 'utf8' }).trim().split('\n');
 
   assert.ok(entries.includes('manifest.json'));
+  assert.ok(entries.includes('PRIVACY.md'));
   assert.ok(entries.includes('background/background.js'));
   assert.equal(entries.some(entry => entry.startsWith(`NTU-COOL-video-downloader-${version}/`)), false);
 });

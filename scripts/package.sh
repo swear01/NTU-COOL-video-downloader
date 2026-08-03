@@ -9,7 +9,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "release" "$stage/package"
-cp manifest.json LICENSE README.md README.zh-TW.md "$stage/package/"
+cp manifest.json LICENSE PRIVACY.md README.md README.zh-TW.md "$stage/package/"
 cp -R background icons offscreen popup utils vendor "$stage/package/"
 rm -f "$output"
 (cd "$stage/package" && zip -X -q -r "$output" .)
