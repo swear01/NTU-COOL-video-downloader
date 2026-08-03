@@ -78,11 +78,25 @@ export class ManifestStore {
   }
 }
 
+const filenameReplacements = {
+  '<': '＜',
+  '>': '＞',
+  ':': '：',
+  '"': '＂',
+  '/': '／',
+  '\\': '＼',
+  '|': '｜',
+  '?': '？',
+  '*': '＊'
+};
+
 export function sanitizeFilename(title) {
-  const safe = title
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
+  const sanitized = title
+    .replace(/[<>:"/\\|?*]/g, character => filenameReplacements[character])
+    .replace(/[\u0000-\u001F]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[. ]+$/g, '');
+  const safe = sanitized.replace(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?=\.|$)/i, '$&_');
   return `${safe || 'ntu-cool-video'}.mp4`;
 }

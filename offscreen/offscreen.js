@@ -17,7 +17,7 @@ async function download({ tabId, manifestUrl, filename }) {
       { kind: 'video', url: manifest.video.segments[0] },
       { kind: 'audio', url: manifest.audio.segments[0] }
     ], (task, buffer) => { initialization[task.kind] = buffer; });
-    const remuxer = new Remuxer(initialization.video, initialization.audio, manifest.duration);
+    const remuxer = new Remuxer(initialization.video, initialization.audio);
     const tasks = [];
     for (const kind of ['video', 'audio']) {
       manifest[kind].segments.slice(1).forEach((url, index) => tasks.push({ kind, index, url }));
