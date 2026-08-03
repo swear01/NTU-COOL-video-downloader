@@ -92,7 +92,7 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
           throw error;
         }
         const buffer = await response.arrayBuffer();
-        await onData(task, buffer);
+        await onData(task, buffer, response.url || task.url);
         completed += 1;
         windowCompleted += 1;
         windowBytes += buffer.byteLength;

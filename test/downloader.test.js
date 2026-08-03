@@ -112,3 +112,21 @@ test('rejects a download that was canceled before it started', { timeout: 100 },
     /canceled/i
   );
 });
+
+test('passes the final response URL to the fragment consumer', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    url: 'https://media.example/redirected/manifest.mpd',
+    arrayBuffer: async () => new ArrayBuffer(1)
+  });
+  let finalUrl;
+
+  try {
+    await downloadAdaptive([{ url: 'https://media.example/manifest.mpd' }],
+      (_task, _buffer, responseUrl) => { finalUrl = responseUrl; });
+    assert.equal(finalUrl, 'https://media.example/redirected/manifest.mpd');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

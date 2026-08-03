@@ -12,13 +12,17 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
   current = { source, control };
   try {
     let manifestBuffer;
+    let manifestBaseUrl;
     await downloadAdaptive(
       [{ url: manifestUrl }],
-      (_task, buffer) => { manifestBuffer = buffer; },
+      (_task, buffer, responseUrl) => {
+        manifestBuffer = buffer;
+        manifestBaseUrl = responseUrl;
+      },
       undefined,
       control
     );
-    const manifest = parseMpd(new TextDecoder().decode(manifestBuffer), manifestUrl);
+    const manifest = parseMpd(new TextDecoder().decode(manifestBuffer), manifestBaseUrl);
     const initialization = {};
     await downloadAdaptive([
       { kind: 'video', url: manifest.video.segments[0] },
