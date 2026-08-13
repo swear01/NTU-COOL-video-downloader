@@ -84,6 +84,8 @@ test('compares dotted extension versions numerically', () => {
   assert.equal(compareVersions('1.2.0', '1.2.1'), -1);
   assert.equal(compareVersions('1.10.0', '1.9.0'), 1);
   assert.equal(compareVersions('1.2.1', '1.2.1'), 0);
+  assert.equal(compareVersions('1.2', '1.2.0'), 0);
+  assert.equal(compareVersions('2', '1.9.9'), 1);
 });
 
 test('treats a newer store revision as superseding an older tag', () => {
@@ -93,6 +95,8 @@ test('treats a newer store revision as superseding an older tag', () => {
   assert.equal(isSuperseded(newer, '1.2.1'), true);
   assert.equal(isSuperseded(newer, '1.3.0'), false);
   assert.equal(isSuperseded({}, '1.2.1'), false);
+  assert.equal(isSuperseded({ itemStatus: [{ submittedItemRevisionStatus: {} }] }, '1.2.1'), false);
+  assert.equal(isSuperseded({ itemStatus: [{ publishedItemRevisionStatus: { state: 'PUBLISHED' } }] }, '1.2.1'), false);
 });
 
 test('treats an explicit empty itemError list as clean', () => {
@@ -100,5 +104,7 @@ test('treats an explicit empty itemError list as clean', () => {
   assert.equal(hasItemErrors({ itemError: {} }), false);
   assert.equal(hasItemErrors({ itemError: [{ reason: 'BAD' }] }), true);
   assert.equal(hasItemErrors({ itemError: 'bad' }), true);
+  assert.equal(hasItemErrors({ itemError: { reason: 'BAD' } }), true);
   assert.equal(hasItemErrors({}), false);
+  assert.equal(hasItemErrors(null), false);
 });

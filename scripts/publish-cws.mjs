@@ -152,7 +152,15 @@ async function fetchJson(url, options = {}, attempts = 3) {
         // attempt must not poison the retry.
         signal: AbortSignal.timeout(timeoutMs),
       });
-      const body = await response.json().catch(() => ({}));
+      const text = await response.text();
+      let body = {};
+      if (text.trim() !== '') {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new PublishError(`non-JSON response (${response.status}): ${text.slice(0, 200)}`);
+        }
+      }
       if (!response.ok) {
         if ((response.status >= 500 || response.status === 429) && attempt < attempts - 1) {
           console.log(`transient error ${response.status}, retrying ...`);
@@ -182,10 +190,12 @@ async function waitForUpload(name, headers) {
   while (Date.now() < deadline && state === 'UPLOAD_IN_PROGRESS') {
     await new Promise(resolve => setTimeout(resolve, 5000));
     const remaining = Math.max(1_000, deadline - Date.now());
+    // Single attempt per poll: the outer loop is the retry, so a hanging
+    // request can never consume attempts beyond the deadline.
     const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, {
       headers,
       timeoutMs: Math.min(REQUEST_TIMEOUT_MS, remaining),
-    });
+    }, 1);
     const item = itemStatus(status);
     if (hasItemErrors(item)) throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
     state = item.uploadState;
@@ -241,8 +251,9 @@ async function main() {
   }
 
   // The reconciliation above must track the version that will actually be
-  // uploaded. When unzip is available, reject an archive whose manifest
-  // version differs from the checkout so retry logic cannot drift.
+  // uploaded, so the archive's own manifest is the source of truth. A
+  // missing unzip binary degrades to a warning; a corrupt archive or a
+  // missing root manifest.json is a hard error.
   const { spawnSync } = await import('node:child_process');
   const unzip = spawnSync('unzip', ['-p', args.upload, 'manifest.json'], { encoding: 'utf8' });
   if (unzip.status === 0) {
@@ -255,8 +266,10 @@ async function main() {
     if (zipVersion !== version) {
       throw new PublishError(`ZIP version ${zipVersion} differs from ./manifest.json version ${version}`);
     }
-  } else {
+  } else if (unzip.error?.code === 'ENOENT') {
     console.log('Warning: unzip is unavailable; skipping the ZIP manifest check.');
+  } else {
+    throw new PublishError(`cannot inspect ${args.upload}: ${unzip.stderr?.trim() || `unzip exited ${unzip.status}`}`);
   }
 
   // If the store already accepted this manifest version but the response was
