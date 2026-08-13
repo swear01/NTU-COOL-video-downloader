@@ -46,9 +46,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Idempotent so re-running a failed job does not collide with an
-          # already-created release.
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+          # already-created release and does not leave it missing assets.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+          else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+          fi
 
       - name: Upload and publish to Chrome Web Store
         if: ${{ env.CWS_SERVICE_ACCOUNT != '' && env.CWS_PUBLISHER_ID != '' }}
