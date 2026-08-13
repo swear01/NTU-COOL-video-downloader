@@ -56,7 +56,7 @@ enabled before API uploads are accepted.
 
 ## Manual upload and publish
 
-Requires Node.js 18 or newer. Run from the repository root so the script can
+Requires Node.js 22 or newer. Run from the repository root so the script can
 read `manifest.json` (it checks whether the store already accepted this
 version, making retries safe):
 

@@ -30,8 +30,8 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const SUBMITTED_STATES = ['PENDING_REVIEW', 'STAGED', 'PUBLISHED', 'PUBLISHED_TO_TESTERS'];
 
 const [nodeMajor] = process.versions.node.split('.').map(Number);
-if (nodeMajor < 18) {
-  fail(`requires Node.js 18+ (found ${process.versions.node})`);
+if (nodeMajor < 22) {
+  fail(`requires Node.js 22+ (found ${process.versions.node})`);
 }
 
 function fail(message) {
@@ -84,14 +84,16 @@ async function fetchItemStatus(name, headers) {
 
 async function waitForUpload(name, headers) {
   let state = 'UPLOAD_IN_PROGRESS';
-  // Larger packages can take a while to process; 60 x 5s stays well within
-  // the release job's 30-minute budget.
-  for (let attempt = 0; attempt < 60 && state === 'UPLOAD_IN_PROGRESS'; attempt += 1) {
+  const deadline = Date.now() + 5 * 60_000;
+  // Larger packages can take a while to process; five minutes stays well
+  // within the release job's 30-minute budget.
+  while (Date.now() < deadline && state === 'UPLOAD_IN_PROGRESS') {
     await new Promise(resolve => setTimeout(resolve, 5000));
+    const remaining = Math.max(1_000, deadline - Date.now());
     try {
       const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
         headers,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(Math.min(REQUEST_TIMEOUT_MS, remaining)),
       });
       const status = await statusResponse.json().catch(() => ({}));
       if (!statusResponse.ok) {
@@ -110,6 +112,15 @@ async function waitForUpload(name, headers) {
   if (state !== 'UPLOADED') {
     fail(`package did not upload cleanly: ${state ?? 'unknown'}`);
   }
+}
+
+function revisionVersion(revision) {
+  // The v2 fetchStatus reference places crxVersion on the revision's
+  // distribution channels; check the top-level field too in case the API
+  // surface changes.
+  if (!revision) return null;
+  if (revision.crxVersion) return revision.crxVersion;
+  return revision.distributionChannels?.find(channel => channel.crxVersion)?.crxVersion ?? null;
 }
 
 async function main() {
@@ -148,7 +159,7 @@ async function main() {
   const status = await fetchItemStatus(name, headers);
   const submitted = status.submittedItemRevisionStatus;
   const alreadySubmitted = submitted && SUBMITTED_STATES.includes(submitted.state)
-    && (submitted.distributionChannels ?? []).some(channel => channel.crxVersion === version);
+    && revisionVersion(submitted) === version;
   if (alreadySubmitted) {
     console.log(`Version ${version} is already submitted (${submitted.state}); nothing to do.`);
     return;
