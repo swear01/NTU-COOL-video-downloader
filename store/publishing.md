@@ -1,0 +1,71 @@
+# Automated Chrome Web Store publishing
+
+Every GitHub release tag (`v*`) automatically uploads the packaged ZIP to the
+Chrome Web Store and submits it for review, using the Chrome Web Store API V2
+with a Google Cloud service account. The step is skipped when the
+`CWS_SERVICE_ACCOUNT` secret is not configured, so releases keep working
+without it.
+
+## One-time setup
+
+### 1. Google Cloud service account
+
+Create a service account and enable the Chrome Web Store API in a Google Cloud
+project (or reuse an existing one):
+
+```sh
+gcloud services enable chromewebstore.googleapis.com --project PROJECT_ID
+gcloud iam service-accounts create cws-publisher \
+  --display-name "Chrome Web Store publisher" --project PROJECT_ID
+gcloud iam service-accounts keys create cws-publisher.json \
+  --iam-account cws-publisher@PROJECT_ID.iam.gserviceaccount.com \
+  --project PROJECT_ID
+```
+
+Keep `cws-publisher.json` private. It grants whoever holds it the ability to
+upload and publish this extension.
+
+### 2. Grant the service account in the Developer Dashboard
+
+Open the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole),
+go to **Account**, and add the service account email
+(`cws-publisher@PROJECT_ID.iam.gserviceaccount.com`) as a user with a role that
+allows uploading and publishing. This is a dashboard-only step; there is no API
+for it.
+
+Find your **publisher ID** under **Publisher > Settings** in the same
+dashboard. It is required for every API call.
+
+### 3. Configure GitHub secrets
+
+In the repository settings (Settings > Secrets and variables > Actions), add:
+
+| Secret | Value |
+| --- | --- |
+| `CWS_SERVICE_ACCOUNT` | Contents of `cws-publisher.json` (base64 encoded) |
+| `CWS_PUBLISHER_ID` | Publisher ID from the Developer Dashboard |
+
+`CWS_ITEM_ID` defaults to this extension
+(`hbmhcpfcjdbgokaloffibmehefkdjdap`) and does not need to be set.
+
+### 4. Prerequisites for the publisher account
+
+The Chrome Web Store requires the publisher's Google Account to have
+[2-step verification](https://support.google.com/accounts/answer/185839)
+enabled before API uploads are accepted.
+
+## Manual upload and publish
+
+```sh
+CWS_SERVICE_ACCOUNT="$(base64 < cws-publisher.json)" \
+CWS_PUBLISHER_ID="<publisher-id>" \
+  npm run cws:publish -- --upload release/NTU-COOL-video-downloader-<version>.zip --publish
+```
+
+Omit `--publish` to only upload the package without submitting it for review.
+
+## What happens on failure
+
+The script exits non-zero when the upload state is not clean or the API
+returns an error, which fails the GitHub Actions job. A broken package never
+reaches the store review queue.

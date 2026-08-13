@@ -40,3 +40,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+
+      - name: Upload and publish to Chrome Web Store
+        if: ${{ secrets.CWS_SERVICE_ACCOUNT != '' && secrets.CWS_PUBLISHER_ID != '' }}
+        env:
+          CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          version="$(node -p "require('./manifest.json').version")"
+          node scripts/publish-cws.mjs --upload "release/NTU-COOL-video-downloader-${version}.zip" --publish
