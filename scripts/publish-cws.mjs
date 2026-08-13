@@ -27,6 +27,12 @@ const ITEM_ID = process.env.CWS_ITEM_ID ?? 'hbmhcpfcjdbgokaloffibmehefkdjdap';
 const SCOPE = 'https://www.googleapis.com/auth/chromewebstore';
 const API = 'https://chromewebstore.googleapis.com';
 const REQUEST_TIMEOUT_MS = 60_000;
+const SUBMITTED_STATES = ['PENDING_REVIEW', 'STAGED', 'PUBLISHED', 'PUBLISHED_TO_TESTERS'];
+
+const [nodeMajor] = process.versions.node.split('.').map(Number);
+if (nodeMajor < 18) {
+  fail(`requires Node.js 18+ (found ${process.versions.node})`);
+}
 
 function fail(message) {
   console.error(`publish-cws: ${message}`);
@@ -37,7 +43,9 @@ function parseArgs(argv) {
   const args = { upload: null, publish: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--upload') {
-      args.upload = argv[i + 1];
+      const value = argv[i + 1];
+      if (!value || value.startsWith('--')) fail('--upload requires a ZIP path');
+      args.upload = value;
       i += 1;
     } else if (argv[i] === '--publish') {
       args.publish = true;
@@ -62,20 +70,42 @@ async function readServiceAccount() {
   }
 }
 
-async function waitForUpload(name, headers, initialState) {
-  let state = initialState;
-  for (let attempt = 0; attempt < 10 && state === 'UPLOAD_IN_PROGRESS'; attempt += 1) {
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
-      headers,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    const status = await statusResponse.json().catch(() => ({}));
-    if (!statusResponse.ok) {
-      fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
+async function fetchItemStatus(name, headers) {
+  const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
+    headers,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  const status = await statusResponse.json().catch(() => ({}));
+  if (!statusResponse.ok) {
+    fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
+  }
+  return status;
+}
+
+async function waitForUpload(name, headers) {
+  let state = 'UPLOAD_IN_PROGRESS';
+  // Larger packages can take a while to process; 60 x 5s stays well within
+  // the release job's 30-minute budget.
+  for (let attempt = 0; attempt < 60 && state === 'UPLOAD_IN_PROGRESS'; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    try {
+      const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
+        headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      const status = await statusResponse.json().catch(() => ({}));
+      if (!statusResponse.ok) {
+        if (statusResponse.status >= 500) {
+          console.log(`fetchStatus transient error ${statusResponse.status}, retrying ...`);
+          continue;
+        }
+        fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
+      }
+      state = status.uploadState;
+      console.log(`Upload state: ${state}`);
+    } catch (error) {
+      console.log(`fetchStatus network error, retrying ... (${error.message})`);
     }
-    state = status.uploadState;
-    console.log(`Upload state: ${state}`);
   }
   if (state !== 'UPLOADED') {
     fail(`package did not upload cleanly: ${state ?? 'unknown'}`);
@@ -104,9 +134,31 @@ async function main() {
 
   const name = `publishers/${publisherId}/items/${ITEM_ID}`;
   const headers = { Authorization: `Bearer ${client.credentials.access_token}` };
+
+  let version;
+  try {
+    version = JSON.parse(await readFile('./manifest.json', 'utf8')).version;
+  } catch {
+    fail('cannot read ./manifest.json; run the script from the repository root');
+  }
+
+  // If the store already accepted this manifest version but the response was
+  // lost (connection drop after accept), a rerun must treat it as success
+  // instead of failing to upload the same version again.
+  const status = await fetchItemStatus(name, headers);
+  const submitted = status.submittedItemRevisionStatus;
+  const alreadySubmitted = submitted && SUBMITTED_STATES.includes(submitted.state)
+    && (submitted.distributionChannels ?? []).some(channel => channel.crxVersion === version);
+  if (alreadySubmitted) {
+    console.log(`Version ${version} is already submitted (${submitted.state}); nothing to do.`);
+    return;
+  }
+
   // Reading the release ZIP and sending it to the store is the whole purpose
   // of this script; the CodeQL "file data in outbound network request"
-  // finding for this call is expected behavior.
+  // finding for this call is expected behavior. The bare POST to the
+  // /upload/ path is the documented media-upload protocol for this API
+  // (developer.chrome.com/docs/webstore/api/reference/rest/v2/media/upload).
   const zip = await readFile(args.upload);
   console.log(`Uploading ${args.upload} (${zip.length} bytes) to ${name} ...`);
 
@@ -123,7 +175,7 @@ async function main() {
   const uploadState = uploaded.uploadState ?? 'unknown';
   console.log(`Upload state: ${uploadState}`);
   if (uploadState === 'UPLOAD_IN_PROGRESS') {
-    await waitForUpload(name, headers, uploadState);
+    await waitForUpload(name, headers);
   } else if (uploadState !== 'UPLOADED') {
     fail(`package did not upload cleanly: ${JSON.stringify(uploaded)}`);
   }

@@ -56,6 +56,10 @@ enabled before API uploads are accepted.
 
 ## Manual upload and publish
 
+Requires Node.js 18 or newer. Run from the repository root so the script can
+read `manifest.json` (it checks whether the store already accepted this
+version, making retries safe):
+
 ```sh
 CWS_SERVICE_ACCOUNT="$(base64 < cws-publisher.json)" \
 CWS_PUBLISHER_ID="<publisher-id>" \
@@ -63,6 +67,17 @@ CWS_PUBLISHER_ID="<publisher-id>" \
 ```
 
 Omit `--publish` to only upload the package without submitting it for review.
+
+## Upload protocol
+
+The script posts the raw ZIP to the media upload endpoint
+`/upload/v2/publishers/{publisherId}/items/{itemId}:upload`, which is the
+documented media-upload protocol for the Chrome Web Store API V2 (no
+`uploadType` parameter is needed on the `/upload/` path). If the upload is
+asynchronous (`UPLOAD_IN_PROGRESS`), the script polls `fetchStatus` for up to
+five minutes, retrying transient network and 5xx errors. A rerun that finds
+the same manifest version already submitted to the store (pending review,
+staged, or published) reports success without re-uploading.
 
 ## What happens on failure
 

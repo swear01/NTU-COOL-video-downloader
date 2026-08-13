@@ -3,6 +3,9 @@
   "version": "1.2.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "package": "sh scripts/package.sh",
     "test": "node --test",

@@ -33,7 +33,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm audit --omit=dev
+      - run: npm audit
       - name: Verify tag and package
         run: |
           test "$GITHUB_REF_NAME" = "v$(node -p "require('./manifest.json').version")"
@@ -56,23 +56,14 @@ jobs:
           # Idempotent: re-running a failed job must neither collide with an
           # already-created release nor leave it missing assets or stuck as a
           # draft.
+          # Idempotent: re-running a failed job must neither collide with an
+          # already-created release nor leave it with assets from different
+          # builds. gh release create publishes immediately, so a release that
+          # already exists is always a partial previous run: replace the whole
+          # asset set so the ZIP and its checksum come from the same build.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')
-            if [ "$draft" = "true" ]; then
-              # A draft means a previous run stopped mid-way; replace the
-              # whole asset set so the ZIP and its checksum come from the
-              # same build, then publish it.
-              gh release upload "$GITHUB_REF_NAME" release/* --clobber
-              gh release edit "$GITHUB_REF_NAME" --draft=false
-            else
-              # Already published: only fill in assets that are missing.
-              for file in release/*; do
-                if ! gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' \
-                    | grep -Fxq "$(basename "$file")"; then
-                  gh release upload "$GITHUB_REF_NAME" "$file"
-                fi
-              done
-            fi
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --draft=false
           else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
           fi
