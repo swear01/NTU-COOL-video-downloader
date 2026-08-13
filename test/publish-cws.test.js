@@ -86,6 +86,7 @@ test('compares dotted extension versions numerically', () => {
   assert.equal(compareVersions('1.2.1', '1.2.1'), 0);
   assert.equal(compareVersions('1.2', '1.2.0'), 0);
   assert.equal(compareVersions('2', '1.9.9'), 1);
+  assert.equal(compareVersions('beta', '1.2.1'), 0);
 });
 
 test('treats a newer store revision as superseding an older tag', () => {

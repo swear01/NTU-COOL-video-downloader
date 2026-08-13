@@ -76,9 +76,10 @@ jobs:
       - name: Warn when Chrome Web Store publishing is not configured
         if: ${{ env.CWS_CONFIGURED != 'true' }}
         run: |
-          echo "::warning::CWS_SERVICE_ACCOUNT is not set; the Chrome Web Store submission is skipped. Set the secret to enable automatic store publishing."
+          echo "::warning::CWS_SERVICE_ACCOUNT is not set; the Chrome Web Store submission is skipped. Set the secret to enable automatic store publishing. (A set service account with a missing CWS_PUBLISHER_ID fails the job loudly instead.)"
 
       - name: Download the published release ZIP
+        if: ${{ env.CWS_CONFIGURED == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

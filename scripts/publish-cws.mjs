@@ -34,7 +34,12 @@ const POLL_BUDGET_MS = 5 * 60_000;
 // that finds its manifest version in one of these must not re-upload it.
 const SUBMITTED_STATES = ['PENDING_REVIEW', 'IN_REVIEW', 'STAGED', 'PUBLISHED', 'PUBLISHED_TO_TESTERS'];
 
-class PublishError extends Error {}
+class PublishError extends Error {
+  constructor(message, status = null) {
+    super(message);
+    this.status = status;
+  }
+}
 
 const [nodeMajor] = process.versions.node.split('.').map(Number);
 if (nodeMajor < 22) {
@@ -95,9 +100,12 @@ export function revisionVersion(revision) {
 }
 
 // Extension versions are dotted numeric strings; compare numerically.
+// Versions with non-numeric segments are incomparable and treated as equal
+// so they never wrongly supersede or block a release.
 export function compareVersions(a, b) {
   const pa = String(a).split('.').map(Number);
   const pb = String(b).split('.').map(Number);
+  if (pa.some(Number.isNaN) || pb.some(Number.isNaN)) return 0;
   for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (diff !== 0) return Math.sign(diff);
@@ -152,22 +160,25 @@ async function fetchJson(url, options = {}, attempts = 3) {
         // attempt must not poison the retry.
         signal: AbortSignal.timeout(timeoutMs),
       });
+      // Retry transient statuses before parsing the body: proxy and gateway
+      // errors often carry non-JSON bodies.
+      if (!response.ok && (response.status >= 500 || response.status === 429)
+          && attempt < attempts - 1) {
+        console.log(`transient error ${response.status}, retrying ...`);
+        await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
+        continue;
+      }
       const text = await response.text();
       let body = {};
       if (text.trim() !== '') {
         try {
           body = JSON.parse(text);
         } catch {
-          throw new PublishError(`non-JSON response (${response.status}): ${text.slice(0, 200)}`);
+          throw new PublishError(`non-JSON response (${response.status}): ${text.slice(0, 200)}`, response.status);
         }
       }
       if (!response.ok) {
-        if ((response.status >= 500 || response.status === 429) && attempt < attempts - 1) {
-          console.log(`transient error ${response.status}, retrying ...`);
-          await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
-          continue;
-        }
-        throw new PublishError(`${url.split('/').pop()} failed (${response.status}): ${JSON.stringify(body)}`);
+        throw new PublishError(`${url.split('/').pop()} failed (${response.status}): ${JSON.stringify(body)}`, response.status);
       }
       return body;
     } catch (error) {
@@ -190,16 +201,33 @@ async function waitForUpload(name, headers) {
   while (Date.now() < deadline && state === 'UPLOAD_IN_PROGRESS') {
     await new Promise(resolve => setTimeout(resolve, 5000));
     const remaining = Math.max(1_000, deadline - Date.now());
-    // Single attempt per poll: the outer loop is the retry, so a hanging
-    // request can never consume attempts beyond the deadline.
-    const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, {
-      headers,
-      timeoutMs: Math.min(REQUEST_TIMEOUT_MS, remaining),
-    }, 1);
-    const item = itemStatus(status);
-    if (hasItemErrors(item)) throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
-    state = item.uploadState;
-    console.log(`Upload state: ${state}`);
+    // Single attempt per poll so a hanging request can never consume time
+    // beyond the deadline; transient failures continue polling instead of
+    // aborting a healthy upload.
+    try {
+      const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, {
+        headers,
+        timeoutMs: Math.min(REQUEST_TIMEOUT_MS, remaining),
+      }, 1);
+      const item = itemStatus(status);
+      if (hasItemErrors(item)) {
+        throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
+      }
+      state = item.uploadState;
+      console.log(`Upload state: ${state}`);
+    } catch (error) {
+      // Network errors, timeouts, 5xx, and 429 are transient; keep polling
+      // until the deadline. Other HTTP failures (4xx) are terminal.
+      const transient = !(error instanceof PublishError)
+        || error.status == null
+        || error.status >= 500
+        || error.status === 429;
+      if (transient) {
+        console.log(`transient poll failure, continuing ... (${error.message})`);
+      } else {
+        throw error;
+      }
+    }
   }
   if (state !== 'UPLOADED') {
     throw new PublishError(`package did not upload cleanly: ${state ?? 'unknown'}`);
@@ -332,8 +360,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch(error => {
     if (error instanceof PublishError) {
       console.error(`publish-cws: ${error.message}`);
-      process.exit(1);
+    } else {
+      console.error(`publish-cws: unexpected failure: ${error?.stack ?? error}`);
     }
-    throw error;
+    process.exit(1);
   });
 }
