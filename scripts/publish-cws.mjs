@@ -61,6 +61,23 @@ async function readServiceAccount() {
   }
 }
 
+async function waitForUpload(name, headers, initialState) {
+  let state = initialState;
+  for (let attempt = 0; attempt < 10 && state === 'UPLOAD_IN_PROGRESS'; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, { headers });
+    const status = await statusResponse.json().catch(() => ({}));
+    if (!statusResponse.ok) {
+      fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
+    }
+    state = status.uploadState;
+    console.log(`Upload state: ${state}`);
+  }
+  if (state !== 'UPLOADED') {
+    fail(`package did not upload cleanly: ${state ?? 'unknown'}`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const publisherId = process.env.CWS_PUBLISHER_ID;
@@ -80,6 +97,9 @@ async function main() {
 
   const name = `publishers/${publisherId}/items/${ITEM_ID}`;
   const headers = { Authorization: `Bearer ${client.credentials.access_token}` };
+  // Reading the release ZIP and sending it to the store is the whole purpose
+  // of this script; the CodeQL "file data in outbound network request"
+  // finding for this call is expected behavior.
   const zip = await readFile(args.upload);
   console.log(`Uploading ${args.upload} (${zip.length} bytes) to ${name} ...`);
 
@@ -92,20 +112,12 @@ async function main() {
   if (!uploadResponse.ok) {
     fail(`upload failed (${uploadResponse.status}): ${JSON.stringify(uploaded)}`);
   }
-  console.log(`Upload state: ${uploaded.uploadState ?? 'unknown'}`);
-
-  if (uploaded.uploadState === 'UPLOAD_IN_PROGRESS') {
-    const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
-      headers,
-    });
-    const status = await statusResponse.json().catch(() => ({}));
-    if (!statusResponse.ok) {
-      fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
-    }
-    console.log(`Final upload state: ${status.uploadState}`);
-    if (status.uploadState !== 'UPLOADED') {
-      fail(`package did not upload cleanly: ${JSON.stringify(status)}`);
-    }
+  const uploadState = uploaded.uploadState ?? 'unknown';
+  console.log(`Upload state: ${uploadState}`);
+  if (uploadState === 'UPLOAD_IN_PROGRESS') {
+    await waitForUpload(name, headers, uploadState);
+  } else if (uploadState !== 'UPLOADED') {
+    fail(`package did not upload cleanly: ${JSON.stringify(uploaded)}`);
   }
 
   if (!args.publish) {

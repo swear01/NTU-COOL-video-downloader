@@ -12,6 +12,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      # Mapped to env because the secrets context is not available in
+      # step-level if conditions.
+      CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
+      CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -39,13 +44,14 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+        run: |
+          # Idempotent so re-running a failed job does not collide with an
+          # already-created release.
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
 
       - name: Upload and publish to Chrome Web Store
-        if: ${{ secrets.CWS_SERVICE_ACCOUNT != '' && secrets.CWS_PUBLISHER_ID != '' }}
-        env:
-          CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
-          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        if: ${{ env.CWS_SERVICE_ACCOUNT != '' && env.CWS_PUBLISHER_ID != '' }}
         run: |
           version="$(node -p "require('./manifest.json').version")"
           node scripts/publish-cws.mjs --upload "release/NTU-COOL-video-downloader-${version}.zip" --publish
