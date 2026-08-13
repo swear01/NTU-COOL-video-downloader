@@ -28,6 +28,8 @@
 
 目前支援新版 NTU COOL 原生 DASH 播放器。YouTube embed、登入自動化、Firefox、Safari 與其他串流格式不在範圍內。
 
+其他下載類擴充功能（例如圖片或影片下載器）可以與本擴充功能並存。本擴充功能只在自己產生的 MP4 存檔期間註冊檔名監聽器，而且絕不會為自己未發起的下載建議檔名，因此不會覆蓋其他下載類擴充功能選擇的檔名。
+
 ## 安裝
 
 1. 從[最新 Release](https://github.com/swear01/NTU-COOL-video-downloader/releases/latest)下載 ZIP 與 `SHA256SUMS`，再將 ZIP 解壓縮到新的資料夾。
