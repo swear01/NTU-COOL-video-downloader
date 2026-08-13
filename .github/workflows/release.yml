@@ -59,9 +59,14 @@ jobs:
           # Idempotent: re-running a failed job must neither collide with an
           # already-created release nor leave it with assets from different
           # builds. gh release create publishes immediately, so a release that
-          # already exists is always a partial previous run: replace the whole
-          # asset set so the ZIP and its checksum come from the same build.
+          # already exists is always a partial previous run: drop assets that
+          # are no longer produced, then replace the whole set with --clobber
+          # so the ZIP and its checksum come from the same build.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | \
+              while read -r asset; do
+                [ -e "release/$asset" ] || gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes
+              done
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
             gh release edit "$GITHUB_REF_NAME" --draft=false
           else
