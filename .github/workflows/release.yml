@@ -65,10 +65,15 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | \
               while read -r asset; do
-                [ -e "release/$asset" ] || gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes
+                case "$asset" in
+                  NTU-COOL-video-downloader-*.zip|SHA256SUMS)
+                    [ -e "release/$asset" ] || gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes ;;
+                esac
               done
             gh release upload "$GITHUB_REF_NAME" release/* --clobber
-            gh release edit "$GITHUB_REF_NAME" --draft=false
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')" = "true" ]; then
+              gh release edit "$GITHUB_REF_NAME" --draft=false
+            fi
           else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
           fi

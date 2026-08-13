@@ -211,7 +211,9 @@ async function waitForUpload(name, headers) {
       }, 1);
       const item = itemStatus(status);
       if (hasItemErrors(item)) {
-        throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
+        // Terminal status: a definitive validation error must not be
+        // classified as a transient poll failure and swallowed.
+        throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`, 400);
       }
       state = item.uploadState;
       console.log(`Upload state: ${state}`);
