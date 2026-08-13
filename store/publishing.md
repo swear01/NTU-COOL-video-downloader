@@ -38,8 +38,15 @@ dashboard. It is required for every API call.
 
 ### 3. Configure the publishing environment
 
-The release workflow's store job runs in the `cws-publish` environment (it is
-created automatically on the first tag push). In the repository settings
+### 3. Enable and configure store publishing
+
+Set the repository **variable** `CWS_ENABLED` to `true`
+(Settings > Secrets and variables > Actions > Variables). The store job is
+skipped while this variable is unset, so a disabled configuration never
+requests environment approvals.
+
+The store job runs in the `cws-publish` environment (it is created
+automatically on the first tag push). In the repository settings
 (Settings > Environments > cws-publish), add the secrets there so no other
 workflow or job can read them:
 

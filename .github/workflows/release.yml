@@ -47,6 +47,11 @@ jobs:
       - uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
         with:
           subject-path: release/*
+      - name: Warn when Chrome Web Store publishing is not enabled
+        if: ${{ vars.CWS_ENABLED != 'true' }}
+        run: |
+          echo "::warning::Automatic Chrome Web Store publishing is not enabled. Set the CWS_ENABLED repository variable to true and add the CWS_SERVICE_ACCOUNT and CWS_PUBLISHER_ID secrets to the cws-publish environment (see store/publishing.md)."
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,18 +80,16 @@ jobs:
 
   store:
     needs: release
+    if: ${{ vars.CWS_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     # The Chrome Web Store credentials live in this environment, so no other
     # workflow or job can read them. Setting required reviewers on the
     # environment turns the automatic store submission into an approved step;
-    # without reviewers it runs automatically.
+    # without reviewers it runs automatically. The job is skipped entirely
+    # when publishing is disabled, so an approval can never be requested for
+    # a no-op.
     environment: cws-publish
     timeout-minutes: 15
-    env:
-      # Non-secret marker so step-level if conditions can decide without
-      # exposing the service-account key. A missing publisher ID fails the
-      # script loudly instead of silently skipping the submission.
-      CWS_CONFIGURED: ${{ secrets.CWS_SERVICE_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -95,13 +98,7 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Warn when Chrome Web Store publishing is not configured
-        if: ${{ env.CWS_CONFIGURED != 'true' }}
-        run: |
-          echo "::warning::CWS_SERVICE_ACCOUNT is not set; the Chrome Web Store submission is skipped. Set the secret in the cws-publish environment to enable automatic store publishing. (A set service account with a missing CWS_PUBLISHER_ID fails the job loudly instead.)"
-
-      - name: Download the published release ZIP
-        if: ${{ env.CWS_CONFIGURED == 'true' }}
+      - name: Download and verify the published release ZIP
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -111,12 +108,13 @@ jobs:
           mkdir -p /tmp/cws-asset
           # Reuse the ZIP published on the GitHub release so the store
           # submission always matches the release assets, even on retries
-          # where a fresh build could produce a different digest.
-          gh release download "$GITHUB_REF_NAME" --pattern "$zip_name" --dir /tmp/cws-asset
+          # where a fresh build could produce a different digest. Verify it
+          # against the published checksum before uploading.
+          gh release download "$GITHUB_REF_NAME" --pattern "$zip_name" --pattern SHA256SUMS --dir /tmp/cws-asset
+          (cd /tmp/cws-asset && sha256sum -c SHA256SUMS)
           echo "CWS_ZIP=/tmp/cws-asset/$zip_name" >> "$GITHUB_ENV"
 
       - name: Upload and publish to Chrome Web Store
-        if: ${{ env.CWS_CONFIGURED == 'true' }}
         env:
           CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
