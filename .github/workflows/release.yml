@@ -48,13 +48,22 @@ jobs:
           # already-created release nor leave it missing assets or stuck as a
           # draft.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            for file in release/*; do
-              if ! gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' \
-                  | grep -Fxq "$(basename "$file")"; then
-                gh release upload "$GITHUB_REF_NAME" "$file"
-              fi
-            done
-            gh release edit "$GITHUB_REF_NAME" --draft=false
+            draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')
+            if [ "$draft" = "true" ]; then
+              # A draft means a previous run stopped mid-way; replace the
+              # whole asset set so the ZIP and its checksum come from the
+              # same build, then publish it.
+              gh release upload "$GITHUB_REF_NAME" release/* --clobber
+              gh release edit "$GITHUB_REF_NAME" --draft=false
+            else
+              # Already published: only fill in assets that are missing.
+              for file in release/*; do
+                if ! gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' \
+                    | grep -Fxq "$(basename "$file")"; then
+                  gh release upload "$GITHUB_REF_NAME" "$file"
+                fi
+              done
+            fi
           else
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
           fi
