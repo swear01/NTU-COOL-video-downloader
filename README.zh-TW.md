@@ -75,12 +75,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.0.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
+Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.1.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
 
 使用 [GitHub CLI](https://cli.github.com/)驗證建置來源簽章：
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.0.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.1.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 
