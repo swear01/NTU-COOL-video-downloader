@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  compareVersions,
   hasItemErrors,
   isAlreadySubmitted,
   isGlobPath,
+  isSuperseded,
   itemStatus,
   parseArgs,
   readServiceAccount,
@@ -77,8 +79,25 @@ test('treats a tester-only revision as submitted (needs promotion)', () => {
   assert.equal(isAlreadySubmitted(testerOnly, '1.2.1'), true);
 });
 
+test('compares dotted extension versions numerically', () => {
+  assert.equal(compareVersions('1.2.1', '1.2.0'), 1);
+  assert.equal(compareVersions('1.2.0', '1.2.1'), -1);
+  assert.equal(compareVersions('1.10.0', '1.9.0'), 1);
+  assert.equal(compareVersions('1.2.1', '1.2.1'), 0);
+});
+
+test('treats a newer store revision as superseding an older tag', () => {
+  const newer = {
+    itemStatus: [{ publishedItemRevisionStatus: { state: 'PUBLISHED', crxVersion: '1.3.0' } }],
+  };
+  assert.equal(isSuperseded(newer, '1.2.1'), true);
+  assert.equal(isSuperseded(newer, '1.3.0'), false);
+  assert.equal(isSuperseded({}, '1.2.1'), false);
+});
+
 test('treats an explicit empty itemError list as clean', () => {
   assert.equal(hasItemErrors({ itemError: [] }), false);
+  assert.equal(hasItemErrors({ itemError: {} }), false);
   assert.equal(hasItemErrors({ itemError: [{ reason: 'BAD' }] }), true);
   assert.equal(hasItemErrors({ itemError: 'bad' }), true);
   assert.equal(hasItemErrors({}), false);

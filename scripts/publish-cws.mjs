@@ -88,7 +88,33 @@ export function readServiceAccount(raw) {
 export function revisionVersion(revision) {
   if (!revision) return null;
   if (revision.crxVersion) return revision.crxVersion;
-  return revision.distributionChannels?.find(channel => channel.crxVersion)?.crxVersion ?? null;
+  const channels = revision.distributionChannels;
+  return Array.isArray(channels)
+    ? channels.find(channel => channel.crxVersion)?.crxVersion ?? null
+    : null;
+}
+
+// Extension versions are dotted numeric strings; compare numerically.
+export function compareVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return Math.sign(diff);
+  }
+  return 0;
+}
+
+// The store already carries a newer submitted or published revision, so an
+// older tag's rerun must not try to upload or publish (the store rejects
+// non-advancing versions anyway).
+export function isSuperseded(status, version) {
+  const item = itemStatus(status);
+  const revisions = [item?.submittedItemRevisionStatus, item?.publishedItemRevisionStatus];
+  return revisions.some(revision => {
+    const storeVersion = revisionVersion(revision);
+    return storeVersion != null && compareVersions(storeVersion, version) > 0;
+  });
 }
 
 // The reference documents the item status as top-level response fields, but
@@ -214,17 +240,40 @@ async function main() {
     throw new PublishError('cannot read ./manifest.json; run the script from the repository root');
   }
 
+  // The reconciliation above must track the version that will actually be
+  // uploaded. When unzip is available, reject an archive whose manifest
+  // version differs from the checkout so retry logic cannot drift.
+  const { spawnSync } = await import('node:child_process');
+  const unzip = spawnSync('unzip', ['-p', args.upload, 'manifest.json'], { encoding: 'utf8' });
+  if (unzip.status === 0) {
+    let zipVersion;
+    try {
+      zipVersion = JSON.parse(unzip.stdout).version;
+    } catch {
+      throw new PublishError(`cannot parse manifest.json inside ${args.upload}`);
+    }
+    if (zipVersion !== version) {
+      throw new PublishError(`ZIP version ${zipVersion} differs from ./manifest.json version ${version}`);
+    }
+  } else {
+    console.log('Warning: unzip is unavailable; skipping the ZIP manifest check.');
+  }
+
   // If the store already accepted this manifest version but the response was
   // lost (connection drop after accept), a rerun must treat it as success
-  // instead of failing to upload the same version again. A tester-only
-  // revision is not done: it still needs the DEFAULT_PUBLISH promotion.
+  // instead of failing to upload the same version again. Revisions that are
+  // staged or tester-only still need the DEFAULT_PUBLISH promotion.
   const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, { headers });
+  if (isSuperseded(status, version)) {
+    console.log(`The store already has a newer revision than ${version}; nothing to do.`);
+    return;
+  }
   const submittedRevision = itemStatus(status)?.submittedItemRevisionStatus;
   if (isAlreadySubmitted(status, version)) {
-    const testerOnly = submittedRevision?.state === 'PUBLISHED_TO_TESTERS'
+    const needsPromotion = ['STAGED', 'PUBLISHED_TO_TESTERS'].includes(submittedRevision?.state)
       && revisionVersion(submittedRevision) === version;
-    if (testerOnly && args.publish) {
-      console.log(`Version ${version} is published to testers only; promoting it ...`);
+    if (needsPromotion && args.publish) {
+      console.log(`Version ${version} is ${submittedRevision.state}; promoting it ...`);
       await publishVersion(name, headers);
     } else {
       console.log(`Version ${version} is already submitted or published; nothing to do.`);

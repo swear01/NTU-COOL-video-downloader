@@ -4,12 +4,12 @@ on:
   push:
     tags: ["v*"]
 
-# Serialize release runs across all tags: the Chrome Web Store upload and
-# publish steps target the same store item, and concurrent runs of different
-# tags could publish the wrong package. A rerun must never cancel the run it
-# is replacing.
+# Serialize runs per tag so rapid consecutive tag pushes never cancel an
+# intermediate release. Cross-tag races on the same store item are prevented
+# by publish-cws.mjs, which refuses to publish a version older than the
+# store's current revision. A rerun must never cancel the run it replaces.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -57,6 +57,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           # Idempotent: a release that already exists is always a partial
           # previous run. Drop assets that are no longer produced, then
           # replace the whole set with --clobber so the ZIP and its checksum
@@ -79,6 +80,7 @@ jobs:
           CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
+          set -euo pipefail
           version="$(node -p "require('./manifest.json').version")"
           zip_name="NTU-COOL-video-downloader-${version}.zip"
           mkdir -p /tmp/cws-asset
