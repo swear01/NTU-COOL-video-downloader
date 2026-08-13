@@ -3,11 +3,18 @@
   "version": "1.2.1",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "package": "sh scripts/package.sh",
-    "test": "node --test"
+    "test": "node --test",
+    "cws:publish": "node scripts/publish-cws.mjs"
   },
   "dependencies": {
     "mp4box": "2.4.1"
+  },
+  "devDependencies": {
+    "google-auth-library": "^11.0.2"
   }
 }

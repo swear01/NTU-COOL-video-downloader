@@ -4,6 +4,14 @@ on:
   push:
     tags: ["v*"]
 
+# Serialize runs per tag so rapid consecutive tag pushes never cancel an
+# intermediate release. Cross-tag races on the same store item are prevented
+# by publish-cws.mjs, which refuses to publish a version older than the
+# store's current revision. A rerun must never cancel the run it replaces.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   id-token: write
@@ -12,6 +20,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The script has idempotency guards, so a generous cap only protects
+    # against transient network slowness.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -20,7 +31,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm audit --omit=dev
+      - run: npm audit
       - name: Verify tag and package
         run: |
           test "$GITHUB_REF_NAME" = "v$(node -p "require('./manifest.json').version")"
@@ -36,7 +47,79 @@ jobs:
       - uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
         with:
           subject-path: release/*
+      - name: Warn when Chrome Web Store publishing is not enabled
+        if: ${{ vars.CWS_ENABLED != 'true' }}
+        run: |
+          echo "::warning::Automatic Chrome Web Store publishing is not enabled. Set the CWS_ENABLED repository variable to true and add the CWS_SERVICE_ACCOUNT and CWS_PUBLISHER_ID secrets to the cws-publish environment (see store/publishing.md)."
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+        run: |
+          set -euo pipefail
+          # Idempotent: a release that already exists is always a partial
+          # previous run. Only a clean "not found" from gh means the release
+          # still has to be created; any other failure (network, API) aborts
+          # instead of racing a create.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>/tmp/release-view.err; then
+            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | \
+              while read -r asset; do
+                case "$asset" in
+                  NTU-COOL-video-downloader-*.zip|SHA256SUMS)
+                    [ -e "release/$asset" ] || gh release delete-asset "$GITHUB_REF_NAME" "$asset" --yes ;;
+                esac
+              done
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')" = "true" ]; then
+              gh release edit "$GITHUB_REF_NAME" --draft=false
+            fi
+          elif grep -qi "not found" /tmp/release-view.err; then
+            gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+          else
+            cat /tmp/release-view.err >&2
+            exit 1
+          fi
+
+  store:
+    needs: release
+    if: ${{ vars.CWS_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    # The Chrome Web Store credentials live in this environment, so no other
+    # workflow or job can read them. Setting required reviewers on the
+    # environment turns the automatic store submission into an approved step;
+    # without reviewers it runs automatically. The job is skipped entirely
+    # when publishing is disabled, so an approval can never be requested for
+    # a no-op.
+    environment: cws-publish
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Download and verify the published release ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./manifest.json').version")"
+          zip_name="NTU-COOL-video-downloader-${version}.zip"
+          mkdir -p /tmp/cws-asset
+          # Reuse the ZIP published on the GitHub release so the store
+          # submission always matches the release assets, even on retries
+          # where a fresh build could produce a different digest. Verify it
+          # against the published checksum before uploading.
+          gh release download "$GITHUB_REF_NAME" --pattern "$zip_name" --pattern SHA256SUMS --dir /tmp/cws-asset
+          (cd /tmp/cws-asset && sha256sum -c SHA256SUMS)
+          echo "CWS_ZIP=/tmp/cws-asset/$zip_name" >> "$GITHUB_ENV"
+
+      - name: Upload and publish to Chrome Web Store
+        env:
+          CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          set -euo pipefail
+          node scripts/publish-cws.mjs --upload "$CWS_ZIP" --publish
