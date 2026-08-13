@@ -58,11 +58,10 @@ jobs:
         run: |
           set -euo pipefail
           # Idempotent: a release that already exists is always a partial
-          # previous run. Drop assets that are no longer produced, then
-          # replace the whole set with --clobber so the ZIP and its checksum
-          # come from the same build. Only assets matching this workflow's
-          # naming pattern are removed, and only a draft is published.
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          # previous run. Only a clean "not found" from gh means the release
+          # still has to be created; any other failure (network, API) aborts
+          # instead of racing a create.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>/tmp/release-view.err; then
             gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | \
               while read -r asset; do
                 case "$asset" in
@@ -74,8 +73,11 @@ jobs:
             if [ "$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft')" = "true" ]; then
               gh release edit "$GITHUB_REF_NAME" --draft=false
             fi
-          else
+          elif grep -qi "not found" /tmp/release-view.err; then
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
+          else
+            cat /tmp/release-view.err >&2
+            exit 1
           fi
 
   store:
