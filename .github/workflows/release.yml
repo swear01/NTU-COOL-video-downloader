@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Non-secret marker so the step-level if can decide without exposing
-      # the service-account key to every step of the job.
-      CWS_CONFIGURED: ${{ secrets.CWS_SERVICE_ACCOUNT != '' && secrets.CWS_PUBLISHER_ID != '' }}
+      # the service-account key to every step of the job. A missing publisher
+      # ID intentionally fails the step (via the script) instead of silently
+      # skipping the store submission.
+      CWS_CONFIGURED: ${{ secrets.CWS_SERVICE_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -71,8 +73,15 @@ jobs:
       - name: Upload and publish to Chrome Web Store
         if: ${{ env.CWS_CONFIGURED == 'true' }}
         env:
+          GH_TOKEN: ${{ github.token }}
           CWS_SERVICE_ACCOUNT: ${{ secrets.CWS_SERVICE_ACCOUNT }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
           version="$(node -p "require('./manifest.json').version")"
-          node scripts/publish-cws.mjs --upload "release/NTU-COOL-video-downloader-${version}.zip" --publish
+          zip_name="NTU-COOL-video-downloader-${version}.zip"
+          mkdir -p /tmp/cws-asset
+          # Reuse the ZIP published on the GitHub release so the store
+          # submission always matches the release assets, even on retries
+          # where a fresh build could produce a different digest.
+          gh release download "$GITHUB_REF_NAME" --pattern "$zip_name" --dir /tmp/cws-asset
+          node scripts/publish-cws.mjs --upload "/tmp/cws-asset/$zip_name" --publish
