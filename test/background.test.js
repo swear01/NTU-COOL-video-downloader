@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 function event() {
-  return { addListener(listener) { this.listener = listener; } };
+  return {
+    addListener(listener) { this.listener = listener; },
+    removeListener(listener) { if (this.listener === listener) this.listener = undefined; }
+  };
 }
 
 function mockChrome(store, download = async () => 7) {
@@ -16,6 +19,7 @@ function mockChrome(store, download = async () => 7) {
     storage: { session: {
       async set(values) { Object.assign(store, values); },
       async get(keys) {
+        if (keys === null) return { ...store };
         const names = Array.isArray(keys) ? keys : [keys];
         return Object.fromEntries(names.filter(key => key in store).map(key => [key, store[key]]));
       },
@@ -163,6 +167,76 @@ test('overrides Chrome blob filenames with the active NTU COOL page title', asyn
   );
 
   assert.deepEqual(suggestion, { filename: '6／5 Counting 3.mp4', conflictAction: 'uniquify' });
+});
+
+test('registers the filename listener only while a download is pending', async () => {
+  const store = {};
+  const idle = mockChrome(store);
+  globalThis.chrome = idle.chromeApi;
+  await import(`../background/background.js?idle=${Date.now()}`);
+
+  // With no MP4 waiting to be named, the extension must not listen to
+  // onDeterminingFilename at all, so it can never fight another downloader
+  // extension for a filename it does not own.
+  assert.equal(idle.chromeApi.downloads.onDeterminingFilename.listener, undefined);
+});
+
+test('does not rename downloads owned by other extensions', async () => {
+  const store = {};
+  const busy = mockChrome(store);
+  globalThis.chrome = busy.chromeApi;
+  await import(`../background/background.js?foreign=${Date.now()}`);
+  await send(busy.chromeApi, {
+    target: 'background', action: 'ready', tabId: 9,
+    filename: 'video.mp4', url: 'blob:ours'
+  });
+  let suggestion = 'not-called';
+  busy.chromeApi.downloads.onDeterminingFilename.listener(
+    { url: 'blob:theirs' }, value => { suggestion = value; }
+  );
+
+  // The listener must still call suggest() exactly once (the API contract),
+  // but never with a filename for a download we did not start.
+  assert.equal(suggestion, undefined);
+});
+
+test('unregisters the filename listener when the download completes', async () => {
+  const store = {};
+  const done = mockChrome(store);
+  globalThis.chrome = done.chromeApi;
+  await import(`../background/background.js?done=${Date.now()}`);
+  await send(done.chromeApi, {
+    target: 'background', action: 'ready', tabId: 10,
+    filename: 'video.mp4', url: 'blob:done'
+  });
+  assert.notEqual(done.chromeApi.downloads.onDeterminingFilename.listener, undefined);
+
+  await done.chromeApi.downloads.onChanged.listener({
+    id: 7, state: { current: 'complete' }
+  });
+
+  assert.equal(done.chromeApi.downloads.onDeterminingFilename.listener, undefined);
+});
+
+test('restores a pending filename after worker suspension', async () => {
+  const store = {};
+  const first = mockChrome(store);
+  globalThis.chrome = first.chromeApi;
+  await import(`../background/background.js?suspend-a=${Date.now()}`);
+  await send(first.chromeApi, {
+    target: 'background', action: 'ready', tabId: 11,
+    filename: 'video.mp4', url: 'blob:suspend'
+  });
+
+  const restarted = mockChrome(store);
+  globalThis.chrome = restarted.chromeApi;
+  await import(`../background/background.js?suspend-b=${Date.now()}`);
+  let suggestion;
+  restarted.chromeApi.downloads.onDeterminingFilename.listener(
+    { url: 'blob:suspend' }, value => { suggestion = value; }
+  );
+
+  assert.deepEqual(suggestion, { filename: 'video.mp4', conflictAction: 'uniquify' });
 });
 
 test('adds an action context menu that opens the batch extension page', async () => {

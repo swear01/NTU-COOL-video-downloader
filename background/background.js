@@ -4,8 +4,67 @@ import { hasOffscreenDocument } from '../utils/offscreen.js';
 const manifests = new ManifestStore();
 const jobs = new Map();
 const downloads = new Map();
-const filenames = new Map();
 const storageKey = tabId => `manifest:${tabId}`;
+
+// Filenames for the MP4s we hand to the browser download manager.
+//
+// chrome.downloads.onDeterminingFilename fires for EVERY download in the
+// browser, and when several extensions have listeners Chrome lets the most
+// recently installed extension decide the filename for all of them. Even
+// suggest() with no arguments still counts as an override with an empty
+// filename, so an always-registered listener would silently replace other
+// downloader extensions' filenames with Chrome's defaults and show them the
+// "Extension cannot name the downloaded file" conflict warning. We therefore
+// register the listener only while one of our own downloads is waiting for
+// its filename to be determined, and keep the pending entries in
+// storage.session so worker suspension cannot strand them.
+const pendingFilenamePrefix = 'pending-filename:';
+const pendingFilenames = new Map(); // blob URL -> filename
+let filenameDeterminer = null;
+
+async function restorePendingFilenames() {
+  const stored = await chrome.storage.session.get(null);
+  for (const [key, filename] of Object.entries(stored)) {
+    if (key.startsWith(pendingFilenamePrefix)) {
+      pendingFilenames.set(key.slice(pendingFilenamePrefix.length), filename);
+    }
+  }
+  syncFilenameDeterminer();
+}
+
+async function setPendingFilename(url, filename) {
+  pendingFilenames.set(url, filename);
+  await chrome.storage.session.set({ [pendingFilenamePrefix + url]: filename });
+  syncFilenameDeterminer();
+}
+
+async function removePendingFilename(url) {
+  if (!pendingFilenames.delete(url)) return;
+  await chrome.storage.session.remove(pendingFilenamePrefix + url);
+  syncFilenameDeterminer();
+}
+
+function syncFilenameDeterminer() {
+  if (pendingFilenames.size > 0) {
+    if (filenameDeterminer === null) {
+      filenameDeterminer = (item, suggest) => {
+        const filename = pendingFilenames.get(item.url);
+        if (filename) {
+          suggest({ filename, conflictAction: 'uniquify' });
+          void removePendingFilename(item.url);
+        } else {
+          suggest();
+        }
+      };
+      chrome.downloads.onDeterminingFilename.addListener(filenameDeterminer);
+    }
+  } else if (filenameDeterminer !== null) {
+    chrome.downloads.onDeterminingFilename.removeListener(filenameDeterminer);
+    filenameDeterminer = null;
+  }
+}
+
+await restorePendingFilenames();
 const jobKey = jobId => `job:${jobId}`;
 const downloadKey = downloadId => `download:${downloadId}`;
 const batchAlarm = jobId => `batch-discovery:${jobId}`;
@@ -323,18 +382,13 @@ chrome.downloads.onChanged.addListener(async delta => {
   const download = await getDownload(delta.id);
   if (!download) return;
   await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
-  filenames.delete(download.url);
+  await removePendingFilename(download.url);
   const source = download.jobId ?? download.tabId;
   await setJob(source, delta.state.current === 'complete'
     ? { state: 'complete', progress: 100 }
     : { state: 'error', error: delta.error?.current || 'Browser download was interrupted.', errorKey: 'downloadFailed' });
   downloads.delete(delta.id);
   await chrome.storage.session.remove(downloadKey(delta.id));
-});
-
-chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-  const filename = filenames.get(item.url);
-  suggest(filename ? { filename, conflictAction: 'uniquify' } : undefined);
 });
 
 async function updateBatchDownloadId(jobId, downloadId) {
@@ -394,7 +448,7 @@ async function stopBatch() {
     const download = await getDownload(item.downloadId);
     if (download) {
       await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
-      filenames.delete(download.url);
+      await removePendingFilename(download.url);
       downloads.delete(item.downloadId);
       await chrome.storage.session.remove(downloadKey(item.downloadId));
     }
@@ -425,7 +479,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       const source = message.jobId ?? message.tabId;
       await setJob(source, { state: 'saving', progress: 100 });
-      filenames.set(message.url, message.filename);
+      await setPendingFilename(message.url, message.filename);
       const downloadId = await chrome.downloads.download({
         url: message.url,
         filename: message.filename,
@@ -438,7 +492,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await chrome.downloads.cancel(downloadId);
         downloads.delete(downloadId);
         await chrome.storage.session.remove(downloadKey(downloadId));
-        filenames.delete(message.url);
+        await removePendingFilename(message.url);
         await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });
         sendResponse({ success: false });
         return;
@@ -446,7 +500,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (batchUpdate?.batch.state === 'paused') await chrome.downloads.pause(downloadId);
       sendResponse({ success: true });
     })().catch(async error => {
-      filenames.delete(message.url);
+      await removePendingFilename(message.url);
       await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });
       const source = message.jobId ?? message.tabId;
       await setJob(source, {
