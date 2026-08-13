@@ -2,9 +2,10 @@
 
 Every GitHub release tag (`v*`) automatically uploads the packaged ZIP to the
 Chrome Web Store and submits it for review, using the Chrome Web Store API V2
-with a Google Cloud service account. The step is skipped when the
-`CWS_SERVICE_ACCOUNT` secret is not configured, so releases keep working
-without it.
+with a Google Cloud service account. The store job runs only when the
+`CWS_ENABLED` repository variable is `true` and the secrets exist in the
+`cws-publish` environment; otherwise the release job warns and skips, so
+releases keep working without store publishing.
 
 ## One-time setup
 
@@ -35,8 +36,6 @@ for it.
 
 Find your **publisher ID** under **Publisher > Settings** in the same
 dashboard. It is required for every API call.
-
-### 3. Configure the publishing environment
 
 ### 3. Enable and configure store publishing
 
