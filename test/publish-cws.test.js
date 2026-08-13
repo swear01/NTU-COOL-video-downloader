@@ -23,9 +23,15 @@ test('rejects --upload without a path or with a flag as its value', () => {
   assert.throws(() => parseArgs(['--bogus']), /unknown argument/);
 });
 
+test('rejects a duplicate --upload flag', () => {
+  assert.throws(() => parseArgs(['--upload', 'a.zip', '--upload', 'b.zip']), /more than once/);
+});
+
 test('refuses unexpanded globs', () => {
   assert.equal(isGlobPath('release/*.zip'), true);
   assert.equal(isGlobPath('./release/*.zip'), true);
+  assert.equal(isGlobPath('release/{a,b}.zip'), true);
+  assert.equal(isGlobPath('release/foo].zip'), true);
   assert.equal(isGlobPath('release/NTU-COOL-video-downloader-1.2.1.zip'), false);
 });
 

@@ -38,10 +38,10 @@ dashboard. It is required for every API call.
 
 ### 3. Configure the publishing environment
 
-The release workflow runs in the `cws-publish` environment (it is created
-automatically on the first tag push). In the repository settings
+The release workflow's store job runs in the `cws-publish` environment (it is
+created automatically on the first tag push). In the repository settings
 (Settings > Environments > cws-publish), add the secrets there so no other
-workflow can read them:
+workflow or job can read them:
 
 | Secret | Value |
 | --- | --- |
@@ -51,7 +51,8 @@ workflow can read them:
 Optionally, add your GitHub account as a **required reviewer** on the
 environment: every tag push then waits for your approval before the store
 submission runs. Without required reviewers the submission is fully
-automatic.
+automatic. The approval gates only the store job; the GitHub release is
+created first regardless.
 
 `CWS_ITEM_ID` defaults to this extension
 (`hbmhcpfcjdbgokaloffibmehefkdjdap`) and does not need to be set.

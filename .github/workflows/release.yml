@@ -20,20 +20,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # The CWS secrets live in this environment, so no other workflow can
-    # read them. Setting required reviewers on the environment turns the
-    # automatic store submission into an approved step; without reviewers
-    # the run proceeds automatically.
-    environment: cws-publish
     # The script has idempotency guards, so a generous cap only protects
-    # against transient store/network slowness.
+    # against transient network slowness.
     timeout-minutes: 60
-    env:
-      # Non-secret marker so the step-level if can decide without exposing
-      # the service-account key to every step of the job. A missing publisher
-      # ID intentionally fails the step (via the script) instead of silently
-      # skipping the store submission.
-      CWS_CONFIGURED: ${{ secrets.CWS_SERVICE_ACCOUNT != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -66,7 +55,8 @@ jobs:
           # Idempotent: a release that already exists is always a partial
           # previous run. Drop assets that are no longer produced, then
           # replace the whole set with --clobber so the ZIP and its checksum
-          # come from the same build.
+          # come from the same build. Only assets matching this workflow's
+          # naming pattern are removed, and only a draft is published.
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | \
               while read -r asset; do
@@ -83,10 +73,32 @@ jobs:
             gh release create "$GITHUB_REF_NAME" release/* --verify-tag --generate-notes
           fi
 
+  store:
+    needs: release
+    runs-on: ubuntu-latest
+    # The Chrome Web Store credentials live in this environment, so no other
+    # workflow or job can read them. Setting required reviewers on the
+    # environment turns the automatic store submission into an approved step;
+    # without reviewers it runs automatically.
+    environment: cws-publish
+    timeout-minutes: 15
+    env:
+      # Non-secret marker so step-level if conditions can decide without
+      # exposing the service-account key. A missing publisher ID fails the
+      # script loudly instead of silently skipping the submission.
+      CWS_CONFIGURED: ${{ secrets.CWS_SERVICE_ACCOUNT != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
       - name: Warn when Chrome Web Store publishing is not configured
         if: ${{ env.CWS_CONFIGURED != 'true' }}
         run: |
-          echo "::warning::CWS_SERVICE_ACCOUNT is not set; the Chrome Web Store submission is skipped. Set the secret to enable automatic store publishing. (A set service account with a missing CWS_PUBLISHER_ID fails the job loudly instead.)"
+          echo "::warning::CWS_SERVICE_ACCOUNT is not set; the Chrome Web Store submission is skipped. Set the secret in the cws-publish environment to enable automatic store publishing. (A set service account with a missing CWS_PUBLISHER_ID fails the job loudly instead.)"
 
       - name: Download the published release ZIP
         if: ${{ env.CWS_CONFIGURED == 'true' }}

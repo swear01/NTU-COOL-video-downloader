@@ -52,6 +52,7 @@ export function parseArgs(argv) {
     if (argv[i] === '--upload') {
       const value = argv[i + 1];
       if (!value || value.startsWith('--')) throw new PublishError('--upload requires a ZIP path');
+      if (args.upload) throw new PublishError('--upload given more than once');
       args.upload = value;
       i += 1;
     } else if (argv[i] === '--publish') {
@@ -64,7 +65,7 @@ export function parseArgs(argv) {
 }
 
 export function isGlobPath(path) {
-  return /[*?[]/.test(path);
+  return /[*?[\]{}]/.test(path);
 }
 
 export function readServiceAccount(raw) {
@@ -161,9 +162,11 @@ async function fetchJson(url, options = {}, attempts = 3) {
         signal: AbortSignal.timeout(timeoutMs),
       });
       // Retry transient statuses before parsing the body: proxy and gateway
-      // errors often carry non-JSON bodies.
+      // errors often carry non-JSON bodies. Drain the body so the connection
+      // can be reused.
       if (!response.ok && (response.status >= 500 || response.status === 429)
           && attempt < attempts - 1) {
+        await response.text().catch(() => {});
         console.log(`transient error ${response.status}, retrying ...`);
         await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
         continue;
@@ -218,12 +221,14 @@ async function waitForUpload(name, headers) {
       state = item.uploadState;
       console.log(`Upload state: ${state}`);
     } catch (error) {
-      // Network errors, timeouts, 5xx, and 429 are transient; keep polling
-      // until the deadline. Other HTTP failures (4xx) are terminal.
+      // Network errors, timeouts, 5xx, 429, and malformed 2xx bodies are
+      // transient; keep polling until the deadline. Other HTTP failures
+      // (4xx) are terminal.
       const transient = !(error instanceof PublishError)
         || error.status == null
         || error.status >= 500
-        || error.status === 429;
+        || error.status === 429
+        || (error.status >= 200 && error.status < 300);
       if (transient) {
         console.log(`transient poll failure, continuing ... (${error.message})`);
       } else {
