@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  hasItemErrors,
   isAlreadySubmitted,
   isGlobPath,
   itemStatus,
@@ -20,7 +21,7 @@ test('rejects --upload without a path or with a flag as its value', () => {
   assert.throws(() => parseArgs(['--bogus']), /unknown argument/);
 });
 
-test('refuses unexpanded globs outside CI', () => {
+test('refuses unexpanded globs', () => {
   assert.equal(isGlobPath('release/*.zip'), true);
   assert.equal(isGlobPath('./release/*.zip'), true);
   assert.equal(isGlobPath('release/NTU-COOL-video-downloader-1.2.1.zip'), false);
@@ -67,4 +68,18 @@ test('treats a matching submitted or published revision as already done', () => 
     submittedItemRevisionStatus: { state: 'REJECTED', distributionChannels: [{ crxVersion: '1.2.1' }] },
   };
   assert.equal(isAlreadySubmitted(rejected, '1.2.1'), false);
+});
+
+test('treats a tester-only revision as submitted (needs promotion)', () => {
+  const testerOnly = {
+    itemStatus: [{ submittedItemRevisionStatus: { state: 'PUBLISHED_TO_TESTERS', crxVersion: '1.2.1' } }],
+  };
+  assert.equal(isAlreadySubmitted(testerOnly, '1.2.1'), true);
+});
+
+test('treats an explicit empty itemError list as clean', () => {
+  assert.equal(hasItemErrors({ itemError: [] }), false);
+  assert.equal(hasItemErrors({ itemError: [{ reason: 'BAD' }] }), true);
+  assert.equal(hasItemErrors({ itemError: 'bad' }), true);
+  assert.equal(hasItemErrors({}), false);
 });

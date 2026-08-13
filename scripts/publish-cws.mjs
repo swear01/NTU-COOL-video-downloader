@@ -10,7 +10,7 @@
 //
 // Usage:
 //   CWS_SERVICE_ACCOUNT=<json> CWS_PUBLISHER_ID=<id> \
-//     node scripts/publish-cws.mjs --upload release/*.zip [--publish]
+//     node scripts/publish-cws.mjs --upload release/NTU-COOL-video-downloader-1.2.1.zip [--publish]
 //
 // Environment variables:
 //   CWS_SERVICE_ACCOUNT  Service account key as a JSON string (or base64).
@@ -106,11 +106,23 @@ export function isAlreadySubmitted(status, version) {
     revision && SUBMITTED_STATES.includes(revision.state) && revisionVersion(revision) === version);
 }
 
-async function fetchJson(url, options, attempts = 3) {
+export function hasItemErrors(item) {
+  // itemError may be a single object or an array; an explicit empty array
+  // must not count as a validation failure.
+  return Array.isArray(item?.itemError) ? item.itemError.length > 0 : Boolean(item?.itemError);
+}
+
+async function fetchJson(url, options = {}, attempts = 3) {
+  const { timeoutMs = REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, {
+        ...fetchOptions,
+        // A fresh signal per attempt: an aborted signal from a timed-out
+        // attempt must not poison the retry.
+        signal: AbortSignal.timeout(timeoutMs),
+      });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status >= 500 && attempt < attempts - 1) {
@@ -143,10 +155,10 @@ async function waitForUpload(name, headers) {
     const remaining = Math.max(1_000, deadline - Date.now());
     const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, {
       headers,
-      signal: AbortSignal.timeout(Math.min(REQUEST_TIMEOUT_MS, remaining)),
+      timeoutMs: Math.min(REQUEST_TIMEOUT_MS, remaining),
     });
     const item = itemStatus(status);
-    if (item.itemError) throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
+    if (hasItemErrors(item)) throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`);
     state = item.uploadState;
     console.log(`Upload state: ${state}`);
   }
@@ -155,13 +167,24 @@ async function waitForUpload(name, headers) {
   }
 }
 
+async function publishVersion(name, headers) {
+  console.log('Submitting for review ...');
+  const published = await fetchJson(`${API}/v2/${name}:publish`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ publishType: 'DEFAULT_PUBLISH' }),
+  });
+  console.log(`Published: state=${published.state ?? 'unknown'} itemId=${published.itemId ?? ITEM_ID}`);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const publisherId = process.env.CWS_PUBLISHER_ID;
   if (!publisherId) throw new PublishError('CWS_PUBLISHER_ID is not set');
   if (!args.upload) throw new PublishError('--upload <zip> is required');
-  if (!process.env.CI && isGlobPath(args.upload)) {
-    throw new PublishError('refusing an unexpanded glob outside CI; pass the actual ZIP path');
+  // The script never expands globs; require the actual ZIP path.
+  if (isGlobPath(args.upload)) {
+    throw new PublishError('refusing an unexpanded glob; pass the actual ZIP path');
   }
   if (!/^[a-z]{32}$/.test(ITEM_ID)) {
     throw new PublishError(`CWS_ITEM_ID must be a 32-character lowercase store item ID, got: ${ITEM_ID}`);
@@ -187,10 +210,17 @@ async function main() {
 
   // If the store already accepted this manifest version but the response was
   // lost (connection drop after accept), a rerun must treat it as success
-  // instead of failing to upload the same version again.
+  // instead of failing to upload the same version again. A tester-only
+  // revision is not done: it still needs the DEFAULT_PUBLISH promotion.
   const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, { headers });
+  const submittedState = itemStatus(status)?.submittedItemRevisionStatus?.state;
   if (isAlreadySubmitted(status, version)) {
-    console.log(`Version ${version} is already submitted or published; nothing to do.`);
+    if (submittedState === 'PUBLISHED_TO_TESTERS' && args.publish) {
+      console.log(`Version ${version} is published to testers only; promoting it ...`);
+      await publishVersion(name, headers);
+    } else {
+      console.log(`Version ${version} is already submitted or published; nothing to do.`);
+    }
     return;
   }
 
@@ -199,16 +229,18 @@ async function main() {
   // finding for this call is expected behavior. The bare POST to the
   // /upload/ path is the documented media-upload protocol for this API
   // (developer.chrome.com/docs/webstore/api/reference/rest/v2/media/upload).
-  const zip = await readFile(args.upload);
+  const zip = await readFile(args.upload).catch(error => {
+    throw new PublishError(`cannot read ${args.upload}: ${error.message}`);
+  });
   console.log(`Uploading ${args.upload} (${zip.length} bytes) to ${name} ...`);
 
   const uploaded = await fetchJson(`${API}/upload/v2/${name}:upload`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/zip' },
     body: zip,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    timeoutMs: 120_000,
   }, UPLOAD_ATTEMPTS);
-  if (uploaded.itemError) {
+  if (hasItemErrors(uploaded)) {
     throw new PublishError(`package has validation errors: ${JSON.stringify(uploaded.itemError)}`);
   }
   const uploadState = uploaded.uploadState ?? 'unknown';
@@ -224,14 +256,7 @@ async function main() {
     return;
   }
 
-  console.log('Submitting for review ...');
-  const published = await fetchJson(`${API}/v2/${name}:publish`, {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ publishType: 'DEFAULT_PUBLISH' }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
-  console.log(`Published: state=${published.state ?? 'unknown'} itemId=${published.itemId ?? ITEM_ID}`);
+  await publishVersion(name, headers);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
