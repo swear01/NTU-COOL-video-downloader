@@ -20,6 +20,11 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # The CWS secrets live in this environment, so no other workflow can
+    # read them. Setting required reviewers on the environment turns the
+    # automatic store submission into an approved step; without reviewers
+    # the run proceeds automatically.
+    environment: cws-publish
     # The script has idempotency guards, so a generous cap only protects
     # against transient store/network slowness.
     timeout-minutes: 60

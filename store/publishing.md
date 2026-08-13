@@ -36,14 +36,22 @@ for it.
 Find your **publisher ID** under **Publisher > Settings** in the same
 dashboard. It is required for every API call.
 
-### 3. Configure GitHub secrets
+### 3. Configure the publishing environment
 
-In the repository settings (Settings > Secrets and variables > Actions), add:
+The release workflow runs in the `cws-publish` environment (it is created
+automatically on the first tag push). In the repository settings
+(Settings > Environments > cws-publish), add the secrets there so no other
+workflow can read them:
 
 | Secret | Value |
 | --- | --- |
 | `CWS_SERVICE_ACCOUNT` | Contents of `cws-publisher.json` (base64 encoded) |
 | `CWS_PUBLISHER_ID` | Publisher ID from the Developer Dashboard |
+
+Optionally, add your GitHub account as a **required reviewer** on the
+environment: every tag push then waits for your approval before the store
+submission runs. Without required reviewers the submission is fully
+automatic.
 
 `CWS_ITEM_ID` defaults to this extension
 (`hbmhcpfcjdbgokaloffibmehefkdjdap`) and does not need to be set.
