@@ -28,7 +28,7 @@ The same extension works on Windows, macOS, and Linux in Chrome 116 or newer, Br
 
 It supports the current native NTU COOL DASH player. YouTube embeds, login automation, Firefox, Safari, and other streaming formats are outside its scope.
 
-Other downloader extensions (for example image or video downloaders) coexist with this one. This extension only takes part in browser filename determination while one of its own MP4s is being saved, so it does not override file names chosen by other extensions.
+Other downloader extensions (for example image or video downloaders) coexist with this one. This extension registers its filename listener only while one of its own MP4s is being saved, and it never suggests a filename for a download it did not start, so it does not override file names chosen by other downloader extensions.
 
 ## Install
 

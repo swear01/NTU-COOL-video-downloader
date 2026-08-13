@@ -239,6 +239,28 @@ test('restores a pending filename after worker suspension', async () => {
   assert.deepEqual(suggestion, { filename: 'video.mp4', conflictAction: 'uniquify' });
 });
 
+test('registers wake listeners synchronously while pending filenames restore', async () => {
+  const store = { 'pending-filename:blob:slow': 'video.mp4' };
+  const slow = mockChrome(store);
+  slow.chromeApi.storage.session.get = keys => new Promise(resolve => {
+    setTimeout(() => resolve(keys === null ? { ...store } : {}), 50);
+  });
+  globalThis.chrome = slow.chromeApi;
+  const loading = import(`../background/background.js?slow=${Date.now()}`);
+  await new Promise(resolve => setTimeout(resolve, 0));
+
+  // A slow storage read must not postpone the listeners that wake the worker.
+  assert.notEqual(slow.chromeApi.runtime.onMessage.listener, undefined);
+  assert.notEqual(slow.chromeApi.downloads.onChanged.listener, undefined);
+
+  await loading;
+  let suggestion;
+  slow.chromeApi.downloads.onDeterminingFilename.listener(
+    { url: 'blob:slow' }, value => { suggestion = value; }
+  );
+  assert.deepEqual(suggestion, { filename: 'video.mp4', conflictAction: 'uniquify' });
+});
+
 test('adds an action context menu that opens the batch extension page', async () => {
   const store = {};
   const batch = mockChrome(store);

@@ -17,19 +17,28 @@ const storageKey = tabId => `manifest:${tabId}`;
 // "Extension cannot name the downloaded file" conflict warning. We therefore
 // register the listener only while one of our own downloads is waiting for
 // its filename to be determined, and keep the pending entries in
-// storage.session so worker suspension cannot strand them.
+// storage.session so worker suspension cannot strand them. In the brief
+// window while the listener is registered, a download we did not start still
+// receives a bare suggest() call (the API requires exactly one call); Chrome
+// counts that as an empty override, so the window is kept as short as
+// possible.
 const pendingFilenamePrefix = 'pending-filename:';
 const pendingFilenames = new Map(); // blob URL -> filename
 let filenameDeterminer = null;
 
 async function restorePendingFilenames() {
-  const stored = await chrome.storage.session.get(null);
-  for (const [key, filename] of Object.entries(stored)) {
-    if (key.startsWith(pendingFilenamePrefix)) {
-      pendingFilenames.set(key.slice(pendingFilenamePrefix.length), filename);
+  try {
+    const stored = await chrome.storage.session.get(null);
+    for (const [key, filename] of Object.entries(stored)) {
+      if (key.startsWith(pendingFilenamePrefix)) {
+        pendingFilenames.set(key.slice(pendingFilenamePrefix.length), filename);
+      }
     }
+    syncFilenameDeterminer();
+  } catch {
+    // Best effort: a failed read only means the next download re-registers
+    // the listener via setPendingFilename().
   }
-  syncFilenameDeterminer();
 }
 
 async function setPendingFilename(url, filename) {
@@ -64,7 +73,6 @@ function syncFilenameDeterminer() {
   }
 }
 
-await restorePendingFilenames();
 const jobKey = jobId => `job:${jobId}`;
 const downloadKey = downloadId => `download:${downloadId}`;
 const batchAlarm = jobId => `batch-discovery:${jobId}`;
@@ -577,3 +585,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 });
+
+// Restore pending filenames only after every wake listener above is
+// registered synchronously. Chrome queues events until the worker finishes
+// its initial evaluation, so the onDeterminingFilename listener below is in
+// place before any download's filename can be determined.
+await restorePendingFilenames();
