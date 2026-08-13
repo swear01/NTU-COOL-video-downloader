@@ -4,6 +4,12 @@ on:
   push:
     tags: ["v*"]
 
+# Two overlapping runs of the same tag would race on release creation and
+# asset uploads; a rerun must never cancel the run it is replacing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   id-token: write
@@ -12,6 +18,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Non-secret marker so the step-level if can decide without exposing
       # the service-account key to every step of the job. A missing publisher

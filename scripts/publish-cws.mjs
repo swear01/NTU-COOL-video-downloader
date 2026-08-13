@@ -26,6 +26,7 @@ import { JWT } from 'google-auth-library';
 const ITEM_ID = process.env.CWS_ITEM_ID ?? 'hbmhcpfcjdbgokaloffibmehefkdjdap';
 const SCOPE = 'https://www.googleapis.com/auth/chromewebstore';
 const API = 'https://chromewebstore.googleapis.com';
+const REQUEST_TIMEOUT_MS = 60_000;
 
 function fail(message) {
   console.error(`publish-cws: ${message}`);
@@ -65,7 +66,10 @@ async function waitForUpload(name, headers, initialState) {
   let state = initialState;
   for (let attempt = 0; attempt < 10 && state === 'UPLOAD_IN_PROGRESS'; attempt += 1) {
     await new Promise(resolve => setTimeout(resolve, 3000));
-    const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, { headers });
+    const statusResponse = await fetch(`${API}/v2/${name}:fetchStatus`, {
+      headers,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
     const status = await statusResponse.json().catch(() => ({}));
     if (!statusResponse.ok) {
       fail(`fetchStatus failed (${statusResponse.status}): ${JSON.stringify(status)}`);
@@ -85,6 +89,9 @@ async function main() {
   if (!args.upload) fail('--upload <zip> is required');
   if (!process.env.CI && args.upload === 'release/*.zip') {
     fail('refusing a literal glob outside CI; pass the actual ZIP path');
+  }
+  if (!/^[a-z]{32}$/.test(ITEM_ID)) {
+    fail(`CWS_ITEM_ID must be a 32-character lowercase store item ID, got: ${ITEM_ID}`);
   }
 
   const credentials = await readServiceAccount();
@@ -107,6 +114,7 @@ async function main() {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/zip' },
     body: zip,
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const uploaded = await uploadResponse.json().catch(() => ({}));
   if (!uploadResponse.ok) {
@@ -130,6 +138,7 @@ async function main() {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ publishType: 'DEFAULT_PUBLISH' }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   const published = await publishResponse.json().catch(() => ({}));
   if (!publishResponse.ok) {
