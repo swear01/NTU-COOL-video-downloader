@@ -30,7 +30,6 @@ const SCOPE = 'https://www.googleapis.com/auth/chromewebstore';
 const API = 'https://chromewebstore.googleapis.com';
 const REQUEST_TIMEOUT_MS = 60_000;
 const POLL_BUDGET_MS = 5 * 60_000;
-const UPLOAD_ATTEMPTS = 3;
 // States that mean the store has accepted the submitted revision; a rerun
 // that finds its manifest version in one of these must not re-upload it.
 const SUBMITTED_STATES = ['PENDING_REVIEW', 'IN_REVIEW', 'STAGED', 'PUBLISHED', 'PUBLISHED_TO_TESTERS'];
@@ -107,9 +106,13 @@ export function isAlreadySubmitted(status, version) {
 }
 
 export function hasItemErrors(item) {
-  // itemError may be a single object or an array; an explicit empty array
+  // itemError may be a single object or an array; explicit empty containers
   // must not count as a validation failure.
-  return Array.isArray(item?.itemError) ? item.itemError.length > 0 : Boolean(item?.itemError);
+  if (Array.isArray(item?.itemError)) return item.itemError.length > 0;
+  if (item?.itemError && typeof item.itemError === 'object') {
+    return Object.keys(item.itemError).length > 0;
+  }
+  return Boolean(item?.itemError);
 }
 
 async function fetchJson(url, options = {}, attempts = 3) {
@@ -125,7 +128,7 @@ async function fetchJson(url, options = {}, attempts = 3) {
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        if (response.status >= 500 && attempt < attempts - 1) {
+        if ((response.status >= 500 || response.status === 429) && attempt < attempts - 1) {
           console.log(`transient error ${response.status}, retrying ...`);
           await new Promise(resolve => setTimeout(resolve, 3000 * (attempt + 1)));
           continue;
@@ -173,7 +176,7 @@ async function publishVersion(name, headers) {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ publishType: 'DEFAULT_PUBLISH' }),
-  });
+  }, 1);
   console.log(`Published: state=${published.state ?? 'unknown'} itemId=${published.itemId ?? ITEM_ID}`);
 }
 
@@ -181,6 +184,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const publisherId = process.env.CWS_PUBLISHER_ID;
   if (!publisherId) throw new PublishError('CWS_PUBLISHER_ID is not set');
+  if (!/^[A-Za-z0-9-]+$/.test(publisherId)) {
+    throw new PublishError(`CWS_PUBLISHER_ID looks invalid: ${publisherId}`);
+  }
   if (!args.upload) throw new PublishError('--upload <zip> is required');
   // The script never expands globs; require the actual ZIP path.
   if (isGlobPath(args.upload)) {
@@ -213,9 +219,11 @@ async function main() {
   // instead of failing to upload the same version again. A tester-only
   // revision is not done: it still needs the DEFAULT_PUBLISH promotion.
   const status = await fetchJson(`${API}/v2/${name}:fetchStatus`, { headers });
-  const submittedState = itemStatus(status)?.submittedItemRevisionStatus?.state;
+  const submittedRevision = itemStatus(status)?.submittedItemRevisionStatus;
   if (isAlreadySubmitted(status, version)) {
-    if (submittedState === 'PUBLISHED_TO_TESTERS' && args.publish) {
+    const testerOnly = submittedRevision?.state === 'PUBLISHED_TO_TESTERS'
+      && revisionVersion(submittedRevision) === version;
+    if (testerOnly && args.publish) {
       console.log(`Version ${version} is published to testers only; promoting it ...`);
       await publishVersion(name, headers);
     } else {
@@ -239,7 +247,7 @@ async function main() {
     headers: { ...headers, 'Content-Type': 'application/zip' },
     body: zip,
     timeoutMs: 120_000,
-  }, UPLOAD_ATTEMPTS);
+  }, 1);
   if (hasItemErrors(uploaded)) {
     throw new PublishError(`package has validation errors: ${JSON.stringify(uploaded.itemError)}`);
   }
@@ -258,7 +266,6 @@ async function main() {
 
   await publishVersion(name, headers);
 }
-
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch(error => {
     if (error instanceof PublishError) {

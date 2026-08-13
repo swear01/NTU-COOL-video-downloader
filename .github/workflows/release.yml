@@ -4,10 +4,12 @@ on:
   push:
     tags: ["v*"]
 
-# Two overlapping runs of the same tag would race on release creation and
-# asset uploads; a rerun must never cancel the run it is replacing.
+# Serialize release runs across all tags: the Chrome Web Store upload and
+# publish steps target the same store item, and concurrent runs of different
+# tags could publish the wrong package. A rerun must never cancel the run it
+# is replacing.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release
   cancel-in-progress: false
 
 permissions:
@@ -18,7 +20,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The script has idempotency guards, so a generous cap only protects
+    # against transient store/network slowness.
+    timeout-minutes: 60
     env:
       # Non-secret marker so the step-level if can decide without exposing
       # the service-account key to every step of the job. A missing publisher
