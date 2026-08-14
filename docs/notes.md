@@ -58,3 +58,32 @@ window is kept minimal. Never widen this scope.
 - `fetchStatus` responses have been observed both flat and nested under
   `itemStatus[0]`; `publish-cws.mjs` accepts both shapes.
 - Node >= 22 is required (google-auth-library@11).
+- UploadState enum (V2): `SUCCEEDED` is the **only** terminal success
+  state; in-flight is `IN_PROGRESS` (the media.upload reference text also
+  uses `UPLOAD_IN_PROGRESS`; treat both as in-progress); `FAILED` /
+  `NOT_FOUND` are errors. `fetchStatus` reports async progress as
+  `lastAsyncUploadState`.
+
+## First real store publish (v1.2.1, 2026-08-14) — gotchas
+
+- **Reruns use the workflow file from the run's original commit.** v1.2.0 /
+  v1.2.1 were pushed before PR #11 (auto-publish) merged and before
+  `CWS_ENABLED` was set, so their runs had no `store` job at all; `gh run
+  rerun` of the old run re-executed the old `release.yml` (unconditional
+  `gh release create`, which then fails because the release already
+  exists). Fix: force-move the tag to a commit carrying the current
+  `release.yml` and force-push — the tag push re-triggers with the current
+  workflow (tag name must still equal the manifest version).
+- **A pending member invite grants no API access.** The 2026 role-based
+  member flow can leave a service account at "invite sent" forever (SAs
+  have no mailbox to accept); the SA must be an **active** member of the
+  publisher (role >= Item manager per the 2026-04-28 roles blog post).
+  Before rerunning the store job, probe with the SA key:
+  `GET /v2/publishers/{id}/items/{item}:fetchStatus` must return 200, not
+  403.
+- **The pipeline had never completed an upload before 2026-08-14:**
+  `publish-cws.mjs` shipped expecting upload state `UPLOADED`, but the V2
+  API returns `SUCCEEDED`, so the store job failed right after every
+  successful upload. Fixed by PR #13; 1.2.1 itself was submitted for
+  review via the documented manual path (local key at
+  `~/.config/cws-publish/cws-publisher.json`) before the fix merged.

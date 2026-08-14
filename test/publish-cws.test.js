@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   compareVersions,
   hasItemErrors,
+  hasUploadSucceeded,
   isAlreadySubmitted,
   isGlobPath,
   isSuperseded,
+  isUploadInProgress,
   itemStatus,
   parseArgs,
   readServiceAccount,
@@ -54,10 +56,24 @@ test('reads the submitted revision version from channels or the revision root', 
 });
 
 test('accepts both flat and itemStatus-array response shapes', () => {
-  const flat = { uploadState: 'UPLOADED' };
-  const nested = { itemStatus: [{ uploadState: 'UPLOADED' }] };
-  assert.equal(itemStatus(flat).uploadState, 'UPLOADED');
-  assert.equal(itemStatus(nested).uploadState, 'UPLOADED');
+  const flat = { uploadState: 'SUCCEEDED' };
+  const nested = { itemStatus: [{ uploadState: 'SUCCEEDED' }] };
+  assert.equal(itemStatus(flat).uploadState, 'SUCCEEDED');
+  assert.equal(itemStatus(nested).uploadState, 'SUCCEEDED');
+});
+
+test('classifies upload states per the v2 UploadState enum', () => {
+  // SUCCEEDED is the only terminal success state; both IN_PROGRESS
+  // spellings from the API docs count as in-flight.
+  assert.equal(hasUploadSucceeded('SUCCEEDED'), true);
+  assert.equal(hasUploadSucceeded('FAILED'), false);
+  assert.equal(hasUploadSucceeded('NOT_FOUND'), false);
+  assert.equal(hasUploadSucceeded('UPLOADED'), false);
+  assert.equal(hasUploadSucceeded(undefined), false);
+  assert.equal(isUploadInProgress('IN_PROGRESS'), true);
+  assert.equal(isUploadInProgress('UPLOAD_IN_PROGRESS'), true);
+  assert.equal(isUploadInProgress('SUCCEEDED'), false);
+  assert.equal(isUploadInProgress('FAILED'), false);
 });
 
 test('treats a matching submitted or published revision as already done', () => {

@@ -88,6 +88,19 @@ export function readServiceAccount(raw) {
   return credentials;
 }
 
+// The v2 UploadState enum names IN_PROGRESS, while the media.upload
+// reference text calls the in-flight state UPLOAD_IN_PROGRESS; treat both
+// spellings as in-progress. SUCCEEDED is the terminal success state; a
+// failed upload surfaces as FAILED (or NOT_FOUND for a missing async
+// upload).
+export function isUploadInProgress(state) {
+  return state === 'IN_PROGRESS' || state === 'UPLOAD_IN_PROGRESS';
+}
+
+export function hasUploadSucceeded(state) {
+  return state === 'SUCCEEDED';
+}
+
 // The v2 fetchStatus reference places crxVersion on the revision's
 // distribution channels; check the top-level field too in case the API
 // surface changes.
@@ -198,10 +211,10 @@ async function fetchJson(url, options = {}, attempts = 3) {
 
 async function waitForUpload(name, headers) {
   const deadline = Date.now() + POLL_BUDGET_MS;
-  let state = 'UPLOAD_IN_PROGRESS';
+  let state = 'IN_PROGRESS';
   // Larger packages can take a while to process; the budget stays well
   // within the release job's 30-minute limit.
-  while (Date.now() < deadline && state === 'UPLOAD_IN_PROGRESS') {
+  while (Date.now() < deadline && isUploadInProgress(state)) {
     await new Promise(resolve => setTimeout(resolve, 5000));
     const remaining = Math.max(1_000, deadline - Date.now());
     // Single attempt per poll so a hanging request can never consume time
@@ -218,7 +231,10 @@ async function waitForUpload(name, headers) {
         // classified as a transient poll failure and swallowed.
         throw new PublishError(`package has validation errors: ${JSON.stringify(item.itemError)}`, 400);
       }
-      state = item.uploadState;
+      // fetchStatus reports async upload progress as lastAsyncUploadState
+      // (the UploadState enum names it); fall back to uploadState for
+      // response shapes where it is top-level.
+      state = item.lastAsyncUploadState ?? item.uploadState;
       console.log(`Upload state: ${state}`);
     } catch (error) {
       // Network errors, timeouts, 5xx, 429, and malformed 2xx bodies are
@@ -236,7 +252,7 @@ async function waitForUpload(name, headers) {
       }
     }
   }
-  if (state !== 'UPLOADED') {
+  if (!hasUploadSucceeded(state)) {
     throw new PublishError(`package did not upload cleanly: ${state ?? 'unknown'}`);
   }
 }
@@ -350,9 +366,9 @@ async function main() {
   }
   const uploadState = uploaded.uploadState ?? 'unknown';
   console.log(`Upload state: ${uploadState}`);
-  if (uploadState === 'UPLOAD_IN_PROGRESS') {
+  if (isUploadInProgress(uploadState)) {
     await waitForUpload(name, headers);
-  } else if (uploadState !== 'UPLOADED') {
+  } else if (!hasUploadSucceeded(uploadState)) {
     throw new PublishError(`package did not upload cleanly: ${JSON.stringify(uploaded)}`);
   }
 

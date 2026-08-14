@@ -34,6 +34,13 @@ go to **Account**, and add the service account email
 allows uploading and publishing. This is a dashboard-only step; there is no API
 for it.
 
+Since the 2026-04 member-role rollout the roles are Viewer / Item manager /
+Editor / Admin; **Item manager** is the minimum role that can create, update
+and publish items. The service account must show as an **active** member:
+inviting it is not enough, because service accounts have no mailbox to accept
+the invitation email and a pending invite grants no API access. Verify with a
+`fetchStatus` probe (200, not 403) before rerunning the store job.
+
 Find your **publisher ID** under **Publisher > Settings** in the same
 dashboard. It is required for every API call.
 
