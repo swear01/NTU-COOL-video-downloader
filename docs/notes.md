@@ -111,7 +111,8 @@ window is kept minimal. Never widen this scope.
   Copy/export take a fixed snapshot; clipboard rejection exposes a readonly
   fallback. Stop keeps completed/error rows. Retry creates fresh job IDs and
   discovers fresh manifests only for failed rows; it retains the last error.
-- Only the most recent batch report persists in local storage. A report read
+- Only the most recent batch report persists in local storage, from batch
+  creation and at state transitions (not every progress tick). A report read
   after browser restart is historical: nonterminal rows are shown as canceled,
   and transfers never restart automatically. Persistence errors are surfaced
   so the user can export before closing the browser.

@@ -742,3 +742,19 @@ test('surfaces report storage failure without discarding the terminal result', a
   assert.equal(store.batch.items[0].state, 'error');
   assert.equal(store.batch.storageError, 'Quota exceeded');
 });
+
+test('archives an interrupted first item instead of returning an older batch', async () => {
+  const url = 'https://cool.ntu.edu.tw/courses/1/modules/items/1';
+  const store = { lastBatchReport: { runId: 'older', items: [] } };
+  const mock = mockChrome(store);
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?first-report=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'startBatch', urls: [url] });
+  assert.equal(store.lastBatchReport.runId, store.batch.runId);
+  assert.equal(store.lastBatchReport.items[0].state, 'opening');
+  delete store.batch;
+  const restored = await send(mock.chromeApi, { action: 'getBatchStatus' });
+  assert.equal(restored.batch.archived, true);
+  assert.equal(restored.batch.items[0].url, url);
+  assert.equal(restored.batch.items[0].state, 'canceled');
+});

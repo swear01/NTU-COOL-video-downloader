@@ -115,8 +115,7 @@ function mutateBatch(runId, mutation) {
     const before = stateKey();
     const value = mutation(batch);
     const after = stateKey();
-    if (before !== after && (batch.state === 'idle' || batch.state === 'complete' ||
-        batch.items.some(item => ['complete', 'error'].includes(item.state)))) await saveBatchReport(batch);
+    if (before !== after) await saveBatchReport(batch);
     await chrome.storage.session.set({ batch });
     return { batch, value };
   });
@@ -129,6 +128,7 @@ function replaceBatch(batch) {
     const old = await getBatch();
     if (['running', 'paused'].includes(old?.state)) throw new Error(chrome.i18n.getMessage('batchAlreadyActive'));
     await clearBatchJobs(old);
+    await saveBatchReport(batch);
     await chrome.storage.session.set({ batch });
     return batch;
   });
@@ -515,6 +515,7 @@ async function retryBatchFailures() {
     const parsed = parseBatchUrls(batch.items.map(item => item.url).join('\n'));
     if (parsed.invalid.length || !parsed.urls.length) throw new Error(chrome.i18n.getMessage('invalidLinks'));
     await clearBatchJobs(old);
+    await saveBatchReport(batch);
     await chrome.storage.session.set({ batch });
     return batch;
   });
