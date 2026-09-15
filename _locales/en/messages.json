@@ -119,14 +119,17 @@
   "reportSaveFailed": {
     "message": "Could not save the report. Export it before closing the browser."
   },
+  "discoveryFailed": {
+    "message": "Could not resolve the video source."
+  },
   "discoveryTimeout": {
-    "message": "No video manifest was detected within 30 seconds. Check login and page access."
+    "message": "Video source resolution timed out after 30 seconds. Check login and course access."
   },
   "state_queued": {
     "message": "Queued"
   },
   "state_opening": {
-    "message": "Opening page"
+    "message": "Resolving video source"
   },
   "state_preparing": {
     "message": "Preparing"

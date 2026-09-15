@@ -9,7 +9,7 @@
 
 [Privacy Policy](PRIVACY.md)
 
-A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or external service.
+A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or developer-operated service.
 
 ## Features
 
@@ -46,7 +46,7 @@ Other downloader extensions (for example image or video downloaders) coexist wit
 
 The MP4 appears in the browser's normal download manager when processing finishes. The browser's existing download-location preference is respected.
 
-For batch download, click the extension icon and select **Open COOL batch downloader** in the popup, or use the same entry in the icon's right-click menu. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Completed and failed results remain visible after Stop. Expand a video row for its error stage, HTTP status, track, segment, and retry count. Use **Copy failed URLs**, **Copy error report**, or **Export JSON report** to keep a snapshot; if clipboard access fails, a selectable text box appears. **Retry failed videos** opens only failed pages again, preserving successful results. The latest report is saved locally across browser restarts; downloads do not resume automatically.
+For batch download, click the extension icon and select **Open COOL batch downloader** in the popup, or use the same entry in the icon's right-click menu. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Completed and failed results remain visible after Stop. Expand a video row for its error stage, HTTP status, track, segment, and retry count. Use **Copy failed URLs**, **Copy error report**, or **Export JSON report** to keep a snapshot; if clipboard access fails, a selectable text box appears. **Retry failed videos** obtains fresh authorization only for failed videos, preserving successful results. Batch downloads resolve each video through COOL authorization and metadata requests without opening video tabs. The latest report is saved locally across browser restarts; downloads do not resume automatically.
 
 Batch mode supports direct `/courses/.../modules/items/...` links only.
 
@@ -55,16 +55,16 @@ Batch mode supports direct `/courses/.../modules/items/...` links only.
 | Permission | Purpose |
 | --- | --- |
 | `activeTab` | Reads the active tab title only after the extension is opened, for the MP4 filename. |
-| `alarms` | Stops waiting for a batch page that does not expose a native video. |
+| `alarms` | Limits each batch source lookup to 30 seconds. |
 | `contextMenus` | Adds the user-invoked shortcut that opens the batch-download page. |
 | `webRequest` | Detects `manifest.mpd` requests from the native player. It does not modify network traffic. |
 | `storage` | Keeps temporary manifest, job, and batch-queue state in memory-backed `storage.session` so service-worker suspension does not lose it; saves the latest sanitized batch report in `storage.local`. |
 | `offscreen` | Runs the download and MP4 assembly after the popup closes. |
 | `downloads` | Hands the completed MP4 to the browser download manager. |
-| `https://*.dlc.ntu.edu.tw/*` | Limits network access to NTU's video media hosts. |
-| Optional `https://cool.ntu.edu.tw/*` | Granted only after the user starts a batch, so the extension can open the pasted pages and read their titles. |
+| `https://*.dlc.ntu.edu.tw/*` | Accesses NTU video authorization, metadata, and media hosts. |
+| Optional `https://cool.ntu.edu.tw/*` | Granted only after the user starts a batch, so the extension can fetch the pasted pages with the existing login and obtain fresh video authorization. |
 
-The extension has no access to general browsing history, cookies, passwords, or unrelated websites. It has no analytics, telemetry, advertising, or remote code. Captured signed URLs remain inside the browser session and are removed when the tab navigates or closes.
+The extension cannot read or export cookies or passwords and has no access to general browsing history or unrelated websites. The browser supplies the existing login cookies for authorized COOL requests. Batch mode temporarily parses COOL-provided LTI fields, which may include a name, email address, account identifiers, and an authorization signature, and posts them only to the official video service. The fields are not persisted or sent to the developer. It has no analytics, telemetry, advertising, or remote code. Signed source URLs remain in temporary session state; persistent reports omit them.
 
 ## Release safety and verification
 
@@ -77,12 +77,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.3.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.4.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
 
 Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.3.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.4.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

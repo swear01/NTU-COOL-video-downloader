@@ -133,3 +133,25 @@ A clean Brave 152.1.94.117 profile reproduces the failure with the 1.2.2
 package: no worker target, no status response, and `open-batch` is absent.
 Changing only the startup `await` to `void` in that same package restores
 the worker response and menu. Version 1.2.3 also passes this browser check.
+
+## Batch source resolution without video tabs (v1.2.4)
+
+- Fetch the module item HTML with the user's existing browser login, parse its
+  native COOL LTI form in the offscreen document, and POST it only to the
+  validated `cool-video.dlc.ntu.edu.tw/ltiv1p1/launch/videos/<id>` endpoint.
+- Follow the authorized player URL to `/api/courses/<course>/videos/<id>/view`
+  and use its `sourceUri`. Launch IDs and player video IDs differ; derive the
+  API path from the final player URL, not from the launch ID.
+- Use `cache: no-store` for a fresh signed form on every attempt. Reusing a
+  consumed form returned HTTP 401 in a live check. Never persist LTI fields.
+- Resolve in the existing offscreen document (`DOM_PARSER` plus `BLOBS`), with
+  abort on Stop/timeout and job-ID checks that reject late source results.
+  Pause permits source lookup to finish but leaves the item queued.
+- Live verification covered all 18 previously failing source lookups: module
+  HTML fetched in an ordinary authenticated COOL tab, then only that HTML
+  supplied to an isolated Brave extension. Real extension fetch performed
+  the LTI redirect, metadata request, and MPD fetch/parse for every item.
+  All 18 succeeded. This does not prove 18 complete MP4 downloads or the
+  installed profile's extension-to-Canvas cookie path.
+- A separate real-worker/offscreen smoke check resolved a source while paused,
+  left it queued, and stopped successfully with only the probe tab open.

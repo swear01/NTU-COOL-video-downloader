@@ -1,10 +1,12 @@
+import { discoverVideo } from '../utils/discovery.js';
 import { DownloadControl, downloadAdaptive } from '../utils/downloader.js';
 import { parseMpd } from '../utils/mpd.js';
 import { Remuxer } from '../utils/remuxer.js';
-import { errorStatus } from '../utils/diagnostics.js';
+import { errorStatus, redact } from '../utils/diagnostics.js';
 
 let current = null;
 const objectUrls = new Set();
+const discoveries = new Map();
 
 async function download({ jobId, tabId, manifestUrl, filename }) {
   if (current) throw new Error('Another video download is already running.');
@@ -95,6 +97,26 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
 
 chrome.runtime.onMessage.addListener(message => {
   if (message.target !== 'offscreen') return;
+  if (message.action === 'discover') {
+    const control = new AbortController();
+    discoveries.set(message.jobId, control);
+    discoverVideo(message.url, control.signal).then(result => {
+      if (!control.signal.aborted) return chrome.runtime.sendMessage({
+        target: 'background', action: 'discovered', jobId: message.jobId, ...result
+      });
+    }, error => {
+      if (!control.signal.aborted) return chrome.runtime.sendMessage({
+        target: 'background', action: 'discovered', jobId: message.jobId,
+        status: { ...errorStatus(error, 'discovery'), errorKey: 'discoveryFailed' }
+      });
+    }).catch(error => {
+      console.error('Failed to report video source resolution:', redact(error?.message || error));
+    }).finally(() => {
+      if (discoveries.get(message.jobId) === control) discoveries.delete(message.jobId);
+    });
+    return;
+  }
+  if (message.action === 'cancel') discoveries.get(message.jobId)?.abort();
   if (message.action === 'release') {
     URL.revokeObjectURL(message.url);
     objectUrls.delete(message.url);

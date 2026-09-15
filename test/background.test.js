@@ -83,6 +83,12 @@ async function send(chromeApi, message) {
   });
 }
 
+async function discovered(batch, store, manifestUrl = 'https://video.dlc.ntu.edu.tw/path/manifest.mpd') {
+  return send(batch.chromeApi, { target: 'background', action: 'discovered',
+    jobId: store.batch.items.find(item => item.state === 'opening').jobId,
+    manifestUrl, title: 'Video 21' });
+}
+
 test('restores active browser-download metadata after worker suspension', async () => {
   const store = {};
   const first = mockChrome(store);
@@ -285,7 +291,7 @@ test('adds an action context menu that opens the batch extension page', async ()
   assert.equal(batch.createdTabs[0].url, 'chrome-extension://test/batch/batch.html');
 });
 
-test('opens each pasted COOL page in the background and starts its captured manifest', async () => {
+test('resolves each pasted COOL page without opening a video tab', async () => {
   const store = {};
   const batch = mockChrome(store);
   globalThis.chrome = batch.chromeApi;
@@ -295,17 +301,15 @@ test('opens each pasted COOL page in the background and starts its captured mani
     urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
 
-  assert.equal(batch.createdTabs[0].active, false);
+  assert.equal(batch.createdTabs.length, 0);
+  assert.equal(batch.sent.at(-1).action, 'discover');
   assert.equal(store.batch.items[0].state, 'opening');
-  assert.equal(store.batch.items[0].tabId, batch.createdTabs[0].id);
+  assert.equal(store.batch.items[0].tabId, undefined);
   assert.match(batch.alarms[0].name, /^batch-discovery:/);
 
-  await batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  await discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
 
-  assert.deepEqual(batch.removedTabs, [batch.createdTabs[0].id]);
+  assert.deepEqual(batch.removedTabs, []);
   assert.equal(store.batch.items[0].state, 'preparing');
   assert.deepEqual(batch.sent.at(-1), {
     target: 'offscreen',
@@ -332,10 +336,7 @@ test('pauses, resumes, and stops the active batch download', async () => {
     action: 'startBatch',
     urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  await batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  await discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
 
   await send(batch.chromeApi, { action: 'pauseBatch' });
   assert.equal(store.batch.state, 'paused');
@@ -349,13 +350,14 @@ test('pauses, resumes, and stops the active batch download', async () => {
   assert.equal(batch.sent.at(-1).action, 'cancel');
 });
 
-test('marks a batch stopped before closing its discovery tab', async () => {
+test('marks a batch stopped before canceling source resolution', async () => {
   const store = {};
   const batch = mockChrome(store);
   let stateDuringRemove;
-  batch.chromeApi.tabs.remove = async tabId => {
-    stateDuringRemove = store.batch.state;
-    batch.removedTabs.push(tabId);
+  const sendMessage = batch.chromeApi.runtime.sendMessage;
+  batch.chromeApi.runtime.sendMessage = async message => {
+    if (message.action === 'cancel') stateDuringRemove = store.batch.state;
+    return sendMessage(message);
   };
   globalThis.chrome = batch.chromeApi;
   await import(`../background/background.js?stop-opening=${Date.now()}`);
@@ -381,10 +383,7 @@ test('advances to the next batch URL after the browser download completes', asyn
       'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678'
     ]
   });
-  await batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  await discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   await send(batch.chromeApi, {
     target: 'background', action: 'ready', jobId: store.batch.items[0].jobId,
     filename: 'First.mp4', url: 'blob:first'
@@ -393,17 +392,20 @@ test('advances to the next batch URL after the browser download completes', asyn
   await new Promise(resolve => setTimeout(resolve, 10));
 
   assert.equal(store.batch.items[0].state, 'complete');
-  assert.equal(batch.createdTabs.length, 2);
-  assert.equal(batch.createdTabs[1].url, 'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678');
+  assert.equal(batch.createdTabs.length, 0);
+  assert.equal(store.batch.items[1].state, 'opening');
+  assert.equal(batch.sent.filter(message => message.action === 'discover').at(-1).url,
+    'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678');
 });
 
-test('fails a batch item that never exposes a native manifest', async () => {
+test('fails and cancels a source resolution that times out', async () => {
   const store = {};
   const batch = mockChrome(store);
   let stateDuringRemove;
-  batch.chromeApi.tabs.remove = async tabId => {
-    stateDuringRemove = store.batch.items[0].state;
-    batch.removedTabs.push(tabId);
+  const sendMessage = batch.chromeApi.runtime.sendMessage;
+  batch.chromeApi.runtime.sendMessage = async message => {
+    if (message.action === 'cancel') stateDuringRemove = store.batch.items[0].state;
+    return sendMessage(message);
   };
   globalThis.chrome = batch.chromeApi;
   await import(`../background/background.js?timeout=${Date.now()}`);
@@ -471,55 +473,35 @@ test('advances after an offscreen dispatch failure without deadlocking', async (
   });
 
   await Promise.race([
-    batch.chromeApi.webRequest.onBeforeRequest.listener({
-      tabId: batch.createdTabs[0].id,
-      url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-    }),
+    discovered(batch, store),
     new Promise((_, reject) => setTimeout(() => reject(new Error('batch advancement deadlocked')), 100))
   ]);
   await new Promise(resolve => setTimeout(resolve, 10));
 
   assert.equal(store.batch.items[0].state, 'error');
-  assert.equal(batch.createdTabs.length, 2);
+  assert.equal(batch.createdTabs.length, 0);
+  assert.equal(store.batch.items[1].state, 'opening');
 });
 
-test('ignores a delayed tab created for an obsolete batch run', async () => {
+test('ignores a delayed source result from an obsolete batch run', async () => {
   const store = {};
   const batch = mockChrome(store);
-  const createTab = batch.chromeApi.tabs.create.bind(batch.chromeApi.tabs);
-  let resolveFirst;
-  let createCount = 0;
-  batch.chromeApi.tabs.create = properties => {
-    createCount += 1;
-    if (createCount !== 1) return createTab(properties);
-    return new Promise(resolve => {
-      resolveFirst = () => {
-        const tab = { id: 19, title: 'Old video', ...properties };
-        batch.createdTabs.push(tab);
-        resolve(tab);
-      };
-    });
-  };
   globalThis.chrome = batch.chromeApi;
   await import(`../background/background.js?obsolete-run=${Date.now()}`);
-  batch.chromeApi.runtime.onMessage.listener({
+  await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
-  }, {}, () => {});
-  await new Promise(resolve => setTimeout(resolve));
+  });
+  const oldJobId = store.batch.items[0].jobId;
   await send(batch.chromeApi, { action: 'stopBatch' });
-  batch.chromeApi.runtime.onMessage.listener({
+  await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/61640/modules/items/2443678']
-  }, {}, () => {});
-  await new Promise(resolve => setTimeout(resolve));
-
-  resolveFirst();
-  await new Promise(resolve => setTimeout(resolve, 20));
-
-  assert.equal(store.batch.items[0].url, 'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678');
-  assert.equal(batch.createdTabs.length, 2);
-  assert.equal(store.batch.items[0].tabId,
-    batch.createdTabs.find(tab => tab.url === 'https://cool.ntu.edu.tw/courses/61640/modules/items/2443678').id);
-  assert.deepEqual(batch.removedTabs, [19]);
+  });
+  await send(batch.chromeApi, { target: 'background', action: 'discovered', jobId: oldJobId,
+    title: 'Old video', manifestUrl: 'https://video.dlc.ntu.edu.tw/old/manifest.mpd' });
+  assert.equal(store.batch.items[0].state, 'opening');
+  assert.equal(store.batch.items[0].manifestUrl, undefined);
+  assert.equal(batch.createdTabs.length, 0);
+  assert.equal(batch.sent.some(message => message.action === 'download'), false);
 });
 
 test('does not let stale progress resurrect a stopped batch', async () => {
@@ -573,10 +555,7 @@ test('cancels a browser download that resolves after Stop', async () => {
   await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  await batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  await discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   const ready = send(batch.chromeApi, {
     target: 'background', action: 'ready', jobId: store.batch.items[0].jobId,
     filename: 'Lecture.mp4', url: 'blob:late'
@@ -596,16 +575,15 @@ test('does not dispatch an offscreen job after Stop wins setup', async () => {
   const store = {};
   const batch = mockChrome(store);
   let finishSetup;
-  batch.chromeApi.offscreen.createDocument = () => new Promise(resolve => { finishSetup = resolve; });
+  let setupCount = 0;
+  batch.chromeApi.offscreen.createDocument = () => ++setupCount === 1
+    ? Promise.resolve() : new Promise(resolve => { finishSetup = resolve; });
   globalThis.chrome = batch.chromeApi;
   await import(`../background/background.js?late-dispatch=${Date.now()}`);
   await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  const manifest = batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  const manifest = discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   await new Promise(resolve => setTimeout(resolve));
 
   await send(batch.chromeApi, { action: 'stopBatch' });
@@ -620,16 +598,15 @@ test('keeps an offscreen job paused when setup finishes late', async () => {
   const store = {};
   const batch = mockChrome(store);
   let finishSetup;
-  batch.chromeApi.offscreen.createDocument = () => new Promise(resolve => { finishSetup = resolve; });
+  let setupCount = 0;
+  batch.chromeApi.offscreen.createDocument = () => ++setupCount === 1
+    ? Promise.resolve() : new Promise(resolve => { finishSetup = resolve; });
   globalThis.chrome = batch.chromeApi;
   await import(`../background/background.js?late-pause=${Date.now()}`);
   await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  const manifest = batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  const manifest = discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   await new Promise(resolve => setTimeout(resolve));
 
   await send(batch.chromeApi, { action: 'pauseBatch' });
@@ -647,7 +624,9 @@ test('does not apply a stale pause after setup resumes', async () => {
   let finishDispatch;
   let dispatchStarted;
   const dispatching = new Promise(resolve => { dispatchStarted = resolve; });
-  batch.chromeApi.offscreen.createDocument = () => new Promise(resolve => { finishSetup = resolve; });
+  let setupCount = 0;
+  batch.chromeApi.offscreen.createDocument = () => ++setupCount === 1
+    ? Promise.resolve() : new Promise(resolve => { finishSetup = resolve; });
   batch.chromeApi.runtime.sendMessage = async message => {
     batch.sent.push(message);
     if (message.action === 'download') {
@@ -661,10 +640,7 @@ test('does not apply a stale pause after setup resumes', async () => {
   await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  const manifest = batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  const manifest = discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   await new Promise(resolve => setTimeout(resolve));
   await send(batch.chromeApi, { action: 'pauseBatch' });
   finishSetup();
@@ -686,10 +662,7 @@ test('removes obsolete batch job records on Stop and replacement', async () => {
   await send(batch.chromeApi, {
     action: 'startBatch', urls: ['https://cool.ntu.edu.tw/courses/58095/modules/items/2536772']
   });
-  await batch.chromeApi.webRequest.onBeforeRequest.listener({
-    tabId: batch.createdTabs[0].id,
-    url: 'https://video.dlc.ntu.edu.tw/path/manifest.mpd'
-  });
+  await discovered(batch, store, 'https://video.dlc.ntu.edu.tw/path/manifest.mpd');
   const oldJobId = store.batch.items[0].jobId;
   assert.ok(store[`job:${oldJobId}`]);
 
@@ -727,8 +700,8 @@ test('preserves failure diagnostics through Stop and restart, then retries only 
   assert.equal(previous.batch.archived, true);
   assert.equal(previous.batch.items[1].errorDetails.segment, 295);
   await send(mock.chromeApi, { action: 'retryBatchFailures' });
-  assert.equal(mock.createdTabs.length, 1);
-  assert.equal(mock.createdTabs[0].url, bad);
+  assert.equal(mock.createdTabs.length, 0);
+  assert.equal(mock.sent.filter(message => message.action === 'discover').at(-1).url, bad);
   assert.equal(store.batch.items[0].state, 'complete');
   assert.equal(store.batch.items[1].lastError.error, 'HTTP 404');
   assert.equal(store.batch.items[1].retryCount, 1);
@@ -770,4 +743,117 @@ test('archives an interrupted first item instead of returning an older batch', a
   assert.equal(restored.batch.archived, true);
   assert.equal(restored.batch.items[0].url, url);
   assert.equal(restored.batch.items[0].state, 'canceled');
+});
+
+test('keeps a resolved source queued while paused, then downloads on Resume', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?pause-discovery=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch',
+    urls: ['https://cool.ntu.edu.tw/courses/1/modules/items/2'] });
+  await send(batch.chromeApi, { action: 'pauseBatch' });
+  await discovered(batch, store);
+  assert.equal(store.batch.items[0].state, 'queued');
+  assert.equal(batch.sent.some(message => message.action === 'download'), false);
+  await send(batch.chromeApi, { action: 'resumeBatch' });
+  assert.equal(batch.sent.at(-1).action, 'download');
+  assert.equal(batch.createdTabs.length, 0);
+});
+
+test('persists authorization errors and advances without opening tabs', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?source-error=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch', urls: [
+    'https://cool.ntu.edu.tw/courses/1/modules/items/2',
+    'https://cool.ntu.edu.tw/courses/1/modules/items/3'
+  ] });
+  await send(batch.chromeApi, { target: 'background', action: 'discovered',
+    jobId: store.batch.items[0].jobId,
+    status: { state: 'error', error: 'HTTP 401', errorDetails: { stage: 'discovery_authorization', httpStatus: 401 } }
+  });
+  assert.equal(store.lastBatchReport.items[0].errorDetails.httpStatus, 401);
+  assert.equal(store.batch.items[1].state, 'opening');
+  assert.equal(batch.createdTabs.length, 0);
+});
+
+test('Stop succeeds before the offscreen document exists and prevents late discovery', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  let finishSetup;
+  batch.chromeApi.offscreen.createDocument = () => new Promise(resolve => { finishSetup = resolve; });
+  const sendMessage = batch.chromeApi.runtime.sendMessage;
+  batch.chromeApi.runtime.sendMessage = message => {
+    if (message.action === 'cancel') throw new Error('Could not establish connection. Receiving end does not exist.');
+    return sendMessage(message);
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?stop-source-setup=${Date.now()}`);
+  const starting = send(batch.chromeApi, { action: 'startBatch',
+    urls: ['https://cool.ntu.edu.tw/courses/1/modules/items/2'] });
+  await new Promise(resolve => setTimeout(resolve));
+  const result = await send(batch.chromeApi, { action: 'stopBatch' });
+  assert.equal(result.batch.state, 'idle');
+  finishSetup();
+  await starting;
+  assert.equal(batch.sent.some(message => message.action === 'discover'), false);
+});
+
+
+test('an empty source report fails visibly instead of restarting discovery', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?empty-source=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch',
+    urls: ['https://cool.ntu.edu.tw/courses/1/modules/items/2'] });
+  await send(batch.chromeApi, { target: 'background', action: 'discovered', jobId: store.batch.items[0].jobId });
+  assert.equal(store.batch.items[0].errorDetails.code, 'missing_manifest');
+  assert.equal(store.batch.state, 'complete');
+  assert.equal(batch.sent.filter(message => message.action === 'discover').length, 1);
+});
+
+
+test('shares offscreen setup between simultaneous callers', async () => {
+  const store = { 'manifest:1': 'https://video.dlc.ntu.edu.tw/1/manifest.mpd',
+    'manifest:2': 'https://video.dlc.ntu.edu.tw/2/manifest.mpd' };
+  const batch = mockChrome(store);
+  let finishSetup;
+  let creations = 0;
+  batch.chromeApi.offscreen.createDocument = () => {
+    creations++;
+    return new Promise(resolve => { finishSetup = resolve; });
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?shared-offscreen=${Date.now()}`);
+  const starts = [1, 2].map(tabId => send(batch.chromeApi, { action: 'startDownload', tabId, title: 'Lecture' }));
+  await new Promise(resolve => setTimeout(resolve));
+  assert.equal(creations, 1);
+  finishSetup();
+  await Promise.all(starts);
+});
+
+test('a failed cancellation report does not strand the remaining queue', async t => {
+  const store = {};
+  const batch = mockChrome(store);
+  const sendMessage = batch.chromeApi.runtime.sendMessage;
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  t.after(() => { console.error = original; });
+  batch.chromeApi.runtime.sendMessage = message => {
+    if (message.action === 'cancel') throw new Error('The message port closed before a response was received.');
+    return sendMessage(message);
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?cancel-report-failure=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch', urls: [
+    'https://cool.ntu.edu.tw/courses/1/modules/items/2', 'https://cool.ntu.edu.tw/courses/1/modules/items/3'
+  ] });
+  await batch.chromeApi.alarms.onAlarm.listener(batch.alarms[0]);
+  assert.equal(store.batch.items[0].errorDetails.code, 'discovery_timeout');
+  assert.equal(store.batch.items[1].state, 'opening');
+  assert.match(errors[0], /Failed to cancel offscreen job/);
 });
