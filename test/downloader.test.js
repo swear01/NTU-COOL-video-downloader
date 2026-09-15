@@ -217,3 +217,20 @@ test('reports the failed segment and does not retry an MP4 consumer failure', as
     assert.equal(attempts, 1);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+
+test('does not finish before the final asynchronous progress report settles', async () => {
+  const originalFetch = globalThis.fetch;
+  let rejectReport;
+  let reports = 0;
+  globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) });
+  try {
+    const result = downloadAdaptive([{ url: 'a' }, { url: 'b' }], () => {}, () => {
+      if (++reports === 1) return new Promise((_, reject) => { rejectReport = reject; });
+    });
+    const checked = assert.rejects(result, /Report unavailable/);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    rejectReport(new Error('Report unavailable'));
+    await checked;
+  } finally { globalThis.fetch = originalFetch; }
+});

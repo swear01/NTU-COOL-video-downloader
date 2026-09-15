@@ -62,7 +62,7 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
 
     const pump = () => {
       if (stopped || control.state !== 'running') return;
-      if (completed === tasks.length) return complete();
+      if (completed === tasks.length && active === 0) return complete();
       while (active < adaptive.value && queue.length) run(queue.shift());
     };
 

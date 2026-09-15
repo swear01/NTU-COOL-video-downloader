@@ -67,7 +67,9 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
     for (const tail of tails) {
       // GPAC's nominal segment count can include a nonexistent video tail.
       // Omit it only when every earlier segment already covers the init's declared duration.
+      stage = 'remux';
       if (!remuxer.hasCompleteTrack(tail.kind, tail.index)) {
+        stage = 'segments';
         await downloadAdaptive([tail], append, undefined, control);
       }
     }
