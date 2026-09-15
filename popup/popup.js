@@ -26,6 +26,10 @@ function render(job) {
     progress.value = job.progress;
     show(t('downloadingFragments', [String(job.progress), formatSpeed(job.bytesPerSecond)]));
   }
+  if (['processing', 'saving', 'complete'].includes(job.state)) {
+    progress.hidden = false;
+    progress.value = 100;
+  }
   if (job.state === 'processing') show(t('combiningAudioVideo'));
   if (job.state === 'saving') show('');
   if (job.state === 'complete') show('');

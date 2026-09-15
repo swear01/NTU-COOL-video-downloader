@@ -728,6 +728,10 @@ test('preserves failure diagnostics through Stop and restart, then retries only 
   assert.equal(store.batch.runId, before);
   await send(mock.chromeApi, { target: 'background', action: 'progress', jobId: 'batch:old:2', status: { state: 'complete' } });
   assert.equal(store.batch.items[1].state, 'opening');
+  await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.equal(store.lastBatchReport.items[1].state, 'canceled');
+  assert.equal(store.lastBatchReport.items[1].lastError.error, 'HTTP 404');
+  assert.equal(store.lastBatchReport.items[1].retryCount, 1);
 });
 
 test('surfaces report storage failure without discarding the terminal result', async () => {

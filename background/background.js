@@ -472,7 +472,8 @@ async function stopBatch() {
     batch.state = 'idle';
     batch.items = batch.items.map(candidate => ['complete', 'error'].includes(candidate.state)
       ? candidate : { id: candidate.id, jobId: candidate.jobId, url: candidate.url,
-        title: candidate.title, state: 'canceled', progress: 0 });
+        title: candidate.title, state: 'canceled', progress: 0,
+        retryCount: candidate.retryCount, lastError: candidate.lastError });
     return item ? { ...item } : null;
   });
   if (!updated) return null;

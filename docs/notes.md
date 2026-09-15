@@ -109,7 +109,8 @@ window is kept minimal. Never widen this scope.
 - Batch rows and the readonly URL input remain selectable. Storage events
   replace polling, preserving expanded details and unchanged selected text.
   Copy/export take a fixed snapshot; clipboard rejection exposes a readonly
-  fallback. Stop keeps completed/error rows. Retry creates fresh job IDs and
+  fallback. Stop keeps completed/error rows and canceled retry metadata.
+  Retry creates fresh job IDs and
   discovers fresh manifests only for failed rows; it retains the last error.
 - Only the most recent batch report persists in local storage, from batch
   creation and at state transitions (not every progress tick). A report read
