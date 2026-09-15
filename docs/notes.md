@@ -117,3 +117,19 @@ window is kept minimal. Never widen this scope.
   after browser restart is historical: nonterminal rows are shown as canceled,
   and transfers never restart automatically. Persistence errors are surfaced
   so the user can export before closing the browser.
+
+## Service worker startup (v1.2.3)
+
+Chromium rejects service worker modules containing top-level `await`, including
+in imported modules. A rejected background worker cannot register the action
+context menu or handle download requests. Restore pending filenames without
+top-level `await`, after synchronously registering wake listeners.
+
+Node's asynchronous `import()` accepts this syntax, so ordinary mocked worker
+tests missed it. The synchronous module-load regression check rejects an async
+module graph, including a top-level `await` introduced in an import.
+
+A clean Brave 152.1.94.117 profile reproduces the failure with the 1.2.2
+package: no worker target, no status response, and `open-batch` is absent.
+Changing only the startup `await` to `void` in that same package restores
+the worker response and menu. Version 1.2.3 also passes this browser check.
