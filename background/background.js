@@ -509,10 +509,10 @@ async function stopBatch() {
       try {
         const download = await getDownload(item.downloadId);
         if (download) {
+          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
           await removePendingFilename(download.url);
           downloads.delete(item.downloadId);
           await chrome.storage.session.remove(downloadKey(item.downloadId));
-          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
         }
       } finally {
         await chrome.downloads.cancel(item.downloadId);

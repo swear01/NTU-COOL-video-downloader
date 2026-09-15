@@ -89,4 +89,18 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   rejectAction = true;
   await get('start').click();
   assert.equal(get('error').textContent, 'Dispatch unavailable');
+  current = { ...current, state: 'running' };
+  changed({ batch: { newValue: current } }, 'session');
+  const originalSend = chrome.runtime.sendMessage;
+  chrome.runtime.sendMessage = async message => {
+    if (message.action !== 'stopBatch') return originalSend(message);
+    current = { ...current, state: 'idle' };
+    changed({ batch: { newValue: current } }, 'session');
+    return { success: false, error: 'Browser cancellation failed' };
+  };
+  await get('stop').click();
+  assert.equal(get('error').textContent, 'Browser cancellation failed');
+  assert.equal(get('stop').disabled, true);
+  assert.equal(get('urls').readOnly, false, 'storage events update the UI even when a control reports failure');
+
 });
