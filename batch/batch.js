@@ -14,6 +14,7 @@ const rows = new Map();
 let batch = null;
 let revision = 0;
 let busy = false;
+let seedUrls = true;
 
 function text(node, value) {
   if (node.textContent !== value) node.textContent = value;
@@ -35,6 +36,10 @@ function render(next) {
   const state = batch?.state || 'idle';
   const active = ['running', 'paused'].includes(state);
   const items = batch?.items || [];
+  if (seedUrls && items.length) {
+    urls.value = items.map(item => item.url).join('\n');
+    seedUrls = false;
+  }
   element('progress').value = batchProgress(items);
   const current = activeBatchItem(items);
   text(element('detail'), current ? t('batchProgressDetail', [String(current.index + 1),
@@ -80,7 +85,6 @@ async function refresh() {
   const response = await chrome.runtime.sendMessage({ action: 'getBatchStatus' });
   if (response?.success === false) throw new Error(formatError(response, t));
   if (requested !== revision) return;
-  if (!urls.value && response.batch?.items?.length) urls.value = response.batch.items.map(item => item.url).join('\n');
   render(response.batch);
 }
 
@@ -103,6 +107,7 @@ function onAction(id, callback) {
 }
 
 urls.addEventListener('input', () => {
+  seedUrls = false;
   urls.classList.remove('invalid');
   error.textContent = '';
   render(batch);

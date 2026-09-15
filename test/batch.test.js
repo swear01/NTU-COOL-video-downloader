@@ -47,6 +47,7 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   changed({ batch: { newValue: current } }, 'session');
   initial({ batch: null });
   await loading;
+  assert.equal(get('urls').value, current.items[0].url);
   assert.equal(get('urls').readOnly, true);
   assert.equal(get('urls').disabled, false);
   const row = get('results').children[0];
@@ -65,6 +66,10 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   assert.equal(get('copyText').hidden, false);
   assert.equal(get('copyText').selected, true);
   assert.equal(JSON.parse(snapshot).items[0].error, 'HTTP 404');
+  get('urls').value = '';
+  get('urls').listeners.input();
+  changed({ batch: { newValue: current } }, 'session');
+  assert.equal(get('urls').value, '');
   get('urls').value = current.items[0].url;
   get('urls').listeners.input();
   await get('start').click();

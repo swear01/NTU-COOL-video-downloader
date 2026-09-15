@@ -47,28 +47,26 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
       try { remuxer.append(task.kind, task.index, buffer); }
       catch (error) { error.stage = 'remux'; throw error; }
     };
-    await downloadAdaptive(
-      tasks,
-      append,
-      progress => chrome.runtime.sendMessage({
-        target: 'background',
-        action: 'progress',
-        ...(jobId ? { jobId } : { tabId }),
-        status: {
-          state: 'downloading',
-          progress: Math.round(progress.completed / (tasks.length + tails.length) * 100),
-          concurrency: progress.concurrency,
-          bytesPerSecond: progress.bytesPerSecond || 0
-        }
-      }),
-      control
-    );
+    let completedBefore = 0;
+    const reportProgress = progress => chrome.runtime.sendMessage({
+      target: 'background',
+      action: 'progress',
+      ...(jobId ? { jobId } : { tabId }),
+      status: {
+        state: 'downloading',
+        progress: Math.round((completedBefore + progress.completed) / (tasks.length + tails.length) * 100),
+        concurrency: progress.concurrency,
+        bytesPerSecond: progress.bytesPerSecond || 0
+      }
+    });
+    await downloadAdaptive(tasks, append, reportProgress, control);
 
     // Omit an estimated tail only when contiguous samples cover the init's duration.
     stage = 'remux';
     const pendingTails = tails.filter(tail => !remuxer.hasCompleteTrack(tail.kind, tail.index));
     stage = 'segments';
-    await downloadAdaptive(pendingTails, append, undefined, control);
+    completedBefore = tasks.length + tails.length - pendingTails.length;
+    await downloadAdaptive(pendingTails, append, reportProgress, control);
 
     stage = 'remux';
     chrome.runtime.sendMessage({
