@@ -87,3 +87,31 @@ window is kept minimal. Never widen this scope.
   successful upload. Fixed by PR #13; 1.2.1 itself was submitted for
   review via the documented manual path (local key at
   `~/.config/cws-publish/cws-publisher.json`) before the fix merged.
+
+## Large MP4s, estimated tail segments, and diagnostics (v1.2.2)
+
+- MP4Box `getBuffer()` serializes the whole output into a `DataStream` whose
+  allocation doubles. A movie over 1 GiB requests a 2 GiB ArrayBuffer; that
+  allocation failed in the affected Brave profile. `mp4Blob()` now writes the
+  same boxes into bounded Blob parts. Do not convert the final Blob back to
+  one ArrayBuffer. Samples are still held in memory during remuxing, so total
+  available RAM remains a practical limit.
+- GPAC fixed-duration MPDs can estimate one nonexistent final video segment
+  when the presentation duration exceeds actual video duration by milliseconds.
+  Download the prefix first; omit the final segment only if contiguous samples
+  already cover the initialization segment's declared fragment duration.
+  Without that evidence, fetch the tail normally and report any failure.
+  Never floor the MPD count or ignore arbitrary 404s: audio and partial video
+  tails can contain required samples.
+- Download failures retain stage, HTTP status, resource path, track, segment,
+  attempts, and timestamp. Consumer/remux errors are terminal, not retried as
+  network failures. Diagnostics omit signed URL query strings and credentials.
+- Batch rows and the readonly URL input remain selectable. Storage events
+  replace polling, preserving expanded details and unchanged selected text.
+  Copy/export take a fixed snapshot; clipboard rejection exposes a readonly
+  fallback. Stop keeps completed/error rows. Retry creates fresh job IDs and
+  discovers fresh manifests only for failed rows; it retains the last error.
+- Only the most recent batch report persists in local storage. A report read
+  after browser restart is historical: nonterminal rows are shown as canceled,
+  and transfers never restart automatically. Persistence errors are surfaced
+  so the user can export before closing the browser.

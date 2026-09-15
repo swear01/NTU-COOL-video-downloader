@@ -16,7 +16,7 @@ function mockChrome(store, download = async () => 7) {
   const menuItems = [];
   let nextTabId = 20;
   const chromeApi = {
-    storage: { session: {
+    storage: { local: { async get() { return { lastBatchReport: store.lastBatchReport }; }, async set(values) { Object.assign(store, structuredClone(values)); } }, session: {
       async set(values) { Object.assign(store, values); },
       async get(keys) {
         if (keys === null) return { ...store };
@@ -28,6 +28,7 @@ function mockChrome(store, download = async () => 7) {
       }
     } },
     runtime: {
+      getManifest: () => ({ version: '1.2.2' }),
       getURL: path => `chrome-extension://test/${path}`,
       getContexts: async () => [],
       onInstalled: event(),
@@ -111,7 +112,8 @@ test('releases the MP4 blob when the browser rejects the download', async () => 
   });
 
   assert.deepEqual(failed.sent[0], { target: 'offscreen', action: 'release', url: 'blob:failed' });
-  assert.deepEqual(store['job:4'], { state: 'error', error: 'blocked', errorKey: 'downloadFailed' });
+  assert.equal(store['job:4'].error, 'blocked');
+  assert.equal(store['job:4'].errorDetails.stage, 'save');
 });
 
 test('sets saving state before starting a browser download', async () => {
@@ -137,9 +139,8 @@ test('persists an offscreen dispatch failure as a terminal job', async () => {
   await import(`../background/background.js?dispatch=${Date.now()}`);
   await send(failed.chromeApi, { action: 'startDownload', tabId: 6, title: 'Lecture' });
 
-  assert.deepEqual(store['job:6'], {
-    state: 'error', error: 'offscreen crashed', errorKey: 'downloadFailed'
-  });
+  assert.equal(store['job:6'].error, 'offscreen crashed');
+  assert.equal(store['job:6'].errorDetails.stage, 'dispatch');
 });
 
 test('preserves the active NTU COOL page title in the download filename', async () => {
@@ -335,7 +336,7 @@ test('pauses, resumes, and stops the active batch download', async () => {
   assert.equal(batch.sent.at(-1).action, 'resume');
   await send(batch.chromeApi, { action: 'stopBatch' });
   assert.equal(store.batch.state, 'idle');
-  assert.equal(store.batch.items[0].state, 'queued');
+  assert.equal(store.batch.items[0].state, 'canceled');
   assert.equal(batch.sent.at(-1).action, 'cancel');
 });
 
@@ -405,7 +406,7 @@ test('fails a batch item that never exposes a native manifest', async () => {
 
   assert.equal(store.batch.state, 'complete');
   assert.equal(store.batch.items[0].state, 'error');
-  assert.equal(store.batch.items[0].errorKey, 'noNativeVideo');
+  assert.equal(store.batch.items[0].errorKey, 'discoveryTimeout');
   assert.equal(stateDuringRemove, 'error');
 });
 
@@ -548,7 +549,7 @@ test('does not let stale progress resurrect a stopped batch', async () => {
     target: 'background', action: 'progress', jobId: store.batch.items[0].jobId,
     status: { state: 'downloading', progress: 73 }
   });
-  assert.equal(store.batch.items[0].state, 'queued');
+  assert.equal(store.batch.items[0].state, 'canceled');
   assert.equal(store.batch.items[0].progress, 0);
 });
 
@@ -691,4 +692,53 @@ test('removes obsolete batch job records on Stop and replacement', async () => {
   });
 
   assert.equal(store[`job:${oldJobId}`], undefined);
+});
+
+test('preserves failure diagnostics through Stop and restart, then retries only failed URLs', async () => {
+  const good = 'https://cool.ntu.edu.tw/courses/1/modules/items/1';
+  const bad = 'https://cool.ntu.edu.tw/courses/1/modules/items/2';
+  const canceled = 'https://cool.ntu.edu.tw/courses/1/modules/items/3';
+  const store = { batch: { runId: 'old', state: 'running', items: [
+    { id: '1', jobId: 'batch:old:1', url: good, state: 'complete', progress: 100 },
+    { id: '2', jobId: 'batch:old:2', url: bad, state: 'downloading', progress: 40 },
+    { id: '3', jobId: 'batch:old:3', url: canceled, state: 'queued', progress: 0 }
+  ] } };
+  const mock = mockChrome(store);
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?reports=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'pauseBatch' });
+  await send(mock.chromeApi, { target: 'background', action: 'progress', jobId: 'batch:old:2',
+    status: { state: 'error', errorKey: 'downloadFailed', error: 'HTTP 404',
+      errorDetails: { stage: 'segments', httpStatus: 404, segment: 295 } } });
+  assert.equal(store.batch.items[1].error, 'HTTP 404');
+  await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.deepEqual(store.batch.items.map(item => item.state), ['complete', 'error', 'canceled']);
+  delete store.batch;
+  const previous = await send(mock.chromeApi, { action: 'getBatchStatus' });
+  assert.equal(previous.batch.archived, true);
+  assert.equal(previous.batch.items[1].errorDetails.segment, 295);
+  await send(mock.chromeApi, { action: 'retryBatchFailures' });
+  assert.equal(mock.createdTabs.length, 1);
+  assert.equal(mock.createdTabs[0].url, bad);
+  assert.equal(store.batch.items[0].state, 'complete');
+  assert.equal(store.batch.items[1].lastError.error, 'HTTP 404');
+  assert.equal(store.batch.items[1].retryCount, 1);
+  const before = store.batch.runId;
+  assert.equal((await send(mock.chromeApi, { action: 'startBatch', urls: [good] })).success, false);
+  assert.equal(store.batch.runId, before);
+  await send(mock.chromeApi, { target: 'background', action: 'progress', jobId: 'batch:old:2', status: { state: 'complete' } });
+  assert.equal(store.batch.items[1].state, 'opening');
+});
+
+test('surfaces report storage failure without discarding the terminal result', async () => {
+  const store = { batch: { runId: 'quota', state: 'running', items: [
+    { id: '1', jobId: 'batch:quota:1', url: 'https://cool.ntu.edu.tw/courses/1/modules/items/1', state: 'opening' }
+  ] } };
+  const mock = mockChrome(store);
+  mock.chromeApi.storage.local.set = async () => { throw new Error('Quota exceeded'); };
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?quota=${Date.now()}`);
+  await mock.chromeApi.alarms.onAlarm.listener({ name: 'batch-discovery:batch:quota:1' });
+  assert.equal(store.batch.items[0].state, 'error');
+  assert.equal(store.batch.storageError, 'Quota exceeded');
 });

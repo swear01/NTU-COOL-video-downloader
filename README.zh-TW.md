@@ -46,7 +46,9 @@
 
 處理完成後，MP4 會出現在瀏覽器原本的下載管理器，並遵守使用者既有的下載位置設定。
 
-批量下載時，在擴充套件圖示上按右鍵，選擇「開啟 COOL 批量下載」。將單支影片頁面網址一行貼上一個，再按「開始」。「暫停」會暫停目前傳輸，「停止」會取消整個佇列。批量模式只接受 `/courses/.../modules/items/...` 直接連結。
+批量下載時，在擴充套件圖示上按右鍵，選擇「開啟 COOL 批量下載」。將單支影片頁面網址一行貼上一個，再按「開始」。「暫停」會暫停目前傳輸，「停止」會取消整個佇列。停止後仍保留成功與失敗紀錄。展開影片列可查看錯誤階段、HTTP 狀態、音／視訊軌、片段編號及嘗試次數；可「複製失敗網址」、「複製錯誤報告」或「匯出 JSON 報告」。自動複製失敗時會顯示可手動選取的文字框。「重試失敗影片」只重新開啟失敗頁面，保留成功結果。最新報告會留在本機，重新開啟瀏覽器後仍可查看，但不會自動續傳。
+
+批量模式只接受 `/courses/.../modules/items/...` 直接連結。
 
 ## 權限與隱私
 
@@ -56,7 +58,7 @@
 | `alarms` | 批量頁面沒有出現原生影片時停止等待。 |
 | `contextMenus` | 在擴充套件右鍵選單加入由使用者觸發的批量下載入口。 |
 | `webRequest` | 偵測原生播放器的 `manifest.mpd` 請求，不修改網路流量。 |
-| `storage` | 將暫時的 manifest、工作與批量佇列狀態放在記憶體型的 `storage.session`，避免 service worker 休眠後遺失。 |
+| `storage` | 將暫時的 manifest、工作與批量佇列狀態放在記憶體型的 `storage.session`，避免 service worker 休眠後遺失；最新的去除簽章資訊批次報告存於 `storage.local`。 |
 | `offscreen` | popup 關閉後繼續下載及封裝 MP4。 |
 | `downloads` | 將完成的 MP4 交給瀏覽器下載管理器。 |
 | `https://*.dlc.ntu.edu.tw/*` | 將網路存取限制在臺大影片媒體主機。 |
@@ -75,12 +77,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.1.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
+Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.2.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
 
 使用 [GitHub CLI](https://cli.github.com/)驗證建置來源簽章：
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.1.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.2.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

@@ -1,6 +1,7 @@
 import { DownloadControl, downloadAdaptive } from '../utils/downloader.js';
 import { parseMpd } from '../utils/mpd.js';
 import { Remuxer } from '../utils/remuxer.js';
+import { errorStatus } from '../utils/diagnostics.js';
 
 let current = null;
 const objectUrls = new Set();
@@ -10,6 +11,8 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
   const source = jobId ?? tabId;
   const control = new DownloadControl();
   current = { source, control };
+  let stage = 'manifest';
+  let blobUrl;
   try {
     let manifestBuffer;
     let manifestBaseUrl;
@@ -22,28 +25,38 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
       undefined,
       control
     );
+    stage = 'parse';
     const manifest = parseMpd(new TextDecoder().decode(manifestBuffer), manifestBaseUrl);
+    stage = 'init';
     const initialization = {};
     await downloadAdaptive([
       { kind: 'video', url: manifest.video.segments[0] },
       { kind: 'audio', url: manifest.audio.segments[0] }
     ], (task, buffer) => { initialization[task.kind] = buffer; }, undefined, control);
+    stage = 'remux';
     const remuxer = new Remuxer(initialization.video, initialization.audio);
     const tasks = [];
+    const tails = [];
     for (const kind of ['video', 'audio']) {
-      manifest[kind].segments.slice(1).forEach((url, index) => tasks.push({ kind, index, url }));
+      const segments = manifest[kind].segments.slice(1);
+      segments.forEach((url, index) => (index === segments.length - 1 ? tails : tasks)
+        .push({ kind, index, url }));
     }
-
+    stage = 'segments';
+    const append = (task, buffer) => {
+      try { remuxer.append(task.kind, task.index, buffer); }
+      catch (error) { error.stage = 'remux'; throw error; }
+    };
     await downloadAdaptive(
       tasks,
-      (task, buffer) => remuxer.append(task.kind, task.index, buffer),
+      append,
       progress => chrome.runtime.sendMessage({
         target: 'background',
         action: 'progress',
         ...(jobId ? { jobId } : { tabId }),
         status: {
           state: 'downloading',
-          progress: Math.round(progress.completed / progress.total * 100),
+          progress: Math.round(progress.completed / (tasks.length + tails.length) * 100),
           concurrency: progress.concurrency,
           bytesPerSecond: progress.bytesPerSecond || 0
         }
@@ -51,19 +64,34 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
       control
     );
 
+    for (const tail of tails) {
+      // GPAC's nominal segment count can include a nonexistent video tail.
+      // Omit it only when every earlier segment already covers the init's declared duration.
+      if (!remuxer.hasCompleteTrack(tail.kind, tail.index)) {
+        await downloadAdaptive([tail], append, undefined, control);
+      }
+    }
+
+    stage = 'remux';
     chrome.runtime.sendMessage({
       target: 'background',
       action: 'progress',
       ...(jobId ? { jobId } : { tabId }),
       status: { state: 'processing', progress: 100 }
     });
-    const url = URL.createObjectURL(new Blob([remuxer.finish()], { type: 'video/mp4' }));
-    objectUrls.add(url);
+    const blob = remuxer.finish();
     if (control.state === 'canceled') throw new Error('Download canceled.');
+    blobUrl = URL.createObjectURL(blob);
+    objectUrls.add(blobUrl);
+    stage = 'save';
     await chrome.runtime.sendMessage({
-      target: 'background', action: 'ready', filename, url,
+      target: 'background', action: 'ready', filename, url: blobUrl,
       ...(jobId ? { jobId } : { tabId })
     });
+  } catch (error) {
+    if (blobUrl) { URL.revokeObjectURL(blobUrl); objectUrls.delete(blobUrl); }
+    error.stage ||= stage;
+    throw error;
   } finally {
     current = null;
   }
@@ -88,7 +116,7 @@ chrome.runtime.onMessage.addListener(message => {
         target: 'background',
         action: 'progress',
         ...(message.jobId ? { jobId: message.jobId } : { tabId: message.tabId }),
-        status: { state: 'error', error: error.message, errorKey: 'downloadFailed' }
+        status: errorStatus(error, 'dispatch')
       });
     });
   }

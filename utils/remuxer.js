@@ -1,5 +1,6 @@
 import {
   createFile,
+  DataStream,
   Endianness,
   MP4BoxBuffer,
   MultiBufferStream
@@ -11,7 +12,23 @@ function sourceTrack(initBuffer) {
   file.onReady = value => { info = value; };
   file.appendBuffer(MP4BoxBuffer.fromArrayBuffer(initBuffer, 0), false);
   if (!info?.tracks.length) throw new Error('Invalid MP4 initialization segment.');
-  return { file, info: info.tracks[0], offset: initBuffer.byteLength, pending: new Map(), next: 0 };
+  return { file, info: info.tracks[0], fragmentDuration: info.fragment_duration,
+    endTime: 0, offset: initBuffer.byteLength, pending: new Map(), next: 0 };
+}
+
+export function mp4Blob(file) {
+  const parts = [];
+  let stream = new DataStream();
+  for (const box of file.boxes) {
+    box.write(stream);
+    // Keep serialization below Brave's single-buffer limit, even for multi-GB movies.
+    if (stream.position >= 16 * 1024 * 1024) {
+      parts.push(new Blob([stream.buffer]));
+      stream = new DataStream();
+    }
+  }
+  if (stream.position) parts.push(new Blob([stream.buffer]));
+  return new Blob(parts, { type: 'video/mp4' });
 }
 
 export function releaseMdatBuffers(file) {
@@ -64,6 +81,7 @@ export class Remuxer {
       source.file.setExtractionOptions(source.info.id, undefined, { nbSamples: 1000 });
       source.file.onSamples = (_, __, samples) => {
         for (const sample of samples) {
+          source.endTime = Math.max(source.endTime, sample.cts + sample.duration);
           this.output.addSample(source.outputId, sample.data, {
             duration: sample.duration,
             cts: sample.cts,
@@ -76,6 +94,15 @@ export class Remuxer {
       };
       source.file.start();
     }
+  }
+
+  hasCompleteTrack(kind, nextIndex) {
+    const source = this[kind];
+    source.file.flush();
+    const duration = source.fragmentDuration;
+    return source.pending.size === 0 && source.next === nextIndex &&
+      duration?.num > 0 && duration.den > 0 &&
+      source.endTime / source.info.timescale >= duration.num / duration.den;
   }
 
   append(kind, index, buffer) {
@@ -93,6 +120,6 @@ export class Remuxer {
   finish() {
     this.video.file.flush();
     this.audio.file.flush();
-    return this.output.getBuffer().buffer;
+    return mp4Blob(this.output);
   }
 }

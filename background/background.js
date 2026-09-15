@@ -1,5 +1,6 @@
 import { ManifestStore, parseBatchUrls, sanitizeFilename } from '../utils/core.js';
 import { hasOffscreenDocument } from '../utils/offscreen.js';
+import { batchReport, errorStatus, redact } from '../utils/diagnostics.js';
 
 const manifests = new ManifestStore();
 const jobs = new Map();
@@ -83,6 +84,23 @@ async function getBatch() {
   return (await chrome.storage.session.get('batch')).batch || null;
 }
 
+async function previousBatch() {
+  const { lastBatchReport } = await chrome.storage.local.get('lastBatchReport');
+  if (!lastBatchReport) return null;
+  return { ...lastBatchReport, state: 'idle', archived: true,
+    items: lastBatchReport.items.map(item => ['complete', 'error', 'canceled'].includes(item.state)
+      ? item : { ...item, state: 'canceled' }) };
+}
+
+async function saveBatchReport(batch) {
+  try {
+    await chrome.storage.local.set({ lastBatchReport: batchReport(batch, chrome.runtime.getManifest().version) });
+    delete batch.storageError;
+  } catch (error) {
+    batch.storageError = redact(error.message);
+  }
+}
+
 async function clearBatchJobs(batch) {
   const jobIds = batch?.items.map(item => item.jobId).filter(Boolean) || [];
   for (const jobId of jobIds) jobs.delete(jobId);
@@ -93,7 +111,11 @@ function mutateBatch(runId, mutation) {
   const operation = batchMutations.then(async () => {
     const batch = await getBatch();
     if (!batch || (runId && batch.runId !== runId)) return null;
+    const before = `${batch.state}:${batch.items.map(item => item.state).join(',')}`;
     const value = mutation(batch);
+    const after = `${batch.state}:${batch.items.map(item => item.state).join(',')}`;
+    if (before !== after && (batch.state === 'idle' || batch.state === 'complete' ||
+        batch.items.some(item => ['complete', 'error'].includes(item.state)))) await saveBatchReport(batch);
     await chrome.storage.session.set({ batch });
     return { batch, value };
   });
@@ -103,7 +125,9 @@ function mutateBatch(runId, mutation) {
 
 function replaceBatch(batch) {
   const operation = batchMutations.then(async () => {
-    await clearBatchJobs(await getBatch());
+    const old = await getBatch();
+    if (['running', 'paused'].includes(old?.state)) throw new Error('A batch is already active.');
+    await clearBatchJobs(old);
     await chrome.storage.session.set({ batch });
     return batch;
   });
@@ -120,6 +144,8 @@ async function updateBatchJob(jobId, job) {
     item.progress = job.progress || 0;
     item.bytesPerSecond = job.bytesPerSecond || 0;
     item.errorKey = job.errorKey;
+    item.error = job.error;
+    item.errorDetails = job.errorDetails;
     return { runId: batch.runId, advance: batch.state === 'running' && ['complete', 'error'].includes(job.state) };
   });
   if (!updated?.value?.advance) return;
@@ -127,6 +153,11 @@ async function updateBatchJob(jobId, job) {
 }
 
 async function setJob(jobId, job) {
+  if (typeof jobId === 'string' && jobId.startsWith('batch:')) {
+    const batch = await getBatch();
+    if (!['running', 'paused'].includes(batch?.state) ||
+        !batch.items.some(item => item.jobId === jobId)) return;
+  }
   jobs.set(jobId, job);
   await chrome.storage.session.set({ [jobKey(jobId)]: job });
   await updateBatchJob(jobId, job);
@@ -213,9 +244,7 @@ async function startBatchItem(item) {
       title: item.title
     });
   } catch (error) {
-    await setJob(item.jobId, {
-      state: 'error', error: error.message, errorKey: 'downloadFailed'
-    });
+    await setJob(item.jobId, errorStatus(error, 'dispatch'));
   }
 }
 
@@ -266,12 +295,11 @@ async function advanceBatch(runId) {
         }
         chrome.alarms.create(batchAlarm(action.item.jobId), { delayInMinutes: 0.5 });
         return;
-      } catch {
+      } catch (error) {
         await mutateBatch(runId, batch => {
           const item = batch.items.find(candidate => candidate.jobId === action.item.jobId);
           if (item) {
-            item.state = 'error';
-            item.errorKey = 'downloadFailed';
+            Object.assign(item, errorStatus(error, 'discovery'));
           }
         });
       }
@@ -314,8 +342,8 @@ async function handleBatchTimeout(jobId) {
     if (!item) return null;
     const tabId = item.tabId;
     item.tabId = null;
-    item.state = 'error';
-    item.errorKey = 'noNativeVideo';
+    Object.assign(item, errorStatus({ message: 'No video manifest was observed within 30 seconds.',
+      code: 'discovery_timeout' }, 'discovery'), { errorKey: 'discoveryTimeout' });
     return { tabId, runId: batch.runId, running: batch.state === 'running' };
   });
   if (!updated?.value) return;
@@ -370,8 +398,8 @@ chrome.tabs.onRemoved.addListener(async tabId => {
     const item = batch.items.find(candidate => candidate.state === 'opening' && candidate.tabId === tabId);
     if (!item) return null;
     item.tabId = null;
-    item.state = 'error';
-    item.errorKey = 'noNativeVideo';
+    Object.assign(item, errorStatus({ message: 'The video discovery tab was closed.',
+      code: 'discovery_tab_closed' }, 'discovery'));
     return { jobId: item.jobId, runId: batch.runId, running: batch.state === 'running' };
   });
   if (!updated?.value) return;
@@ -394,7 +422,8 @@ chrome.downloads.onChanged.addListener(async delta => {
   const source = download.jobId ?? download.tabId;
   await setJob(source, delta.state.current === 'complete'
     ? { state: 'complete', progress: 100 }
-    : { state: 'error', error: delta.error?.current || 'Browser download was interrupted.', errorKey: 'downloadFailed' });
+    : errorStatus({ message: delta.error?.current || 'Browser download was interrupted.',
+      code: delta.error?.current || 'download_interrupted' }, 'save'));
   downloads.delete(delta.id);
   await chrome.storage.session.remove(downloadKey(delta.id));
 });
@@ -440,9 +469,9 @@ async function stopBatch() {
   const updated = await mutateBatch(null, batch => {
     const item = batch.items.find(candidate => ['opening', 'preparing', 'downloading', 'processing', 'saving'].includes(candidate.state));
     batch.state = 'idle';
-    batch.items = batch.items.map(candidate => ({
-      id: candidate.id, jobId: candidate.jobId, url: candidate.url, state: 'queued', progress: 0
-    }));
+    batch.items = batch.items.map(candidate => ['complete', 'error'].includes(candidate.state)
+      ? candidate : { id: candidate.id, jobId: candidate.jobId, url: candidate.url,
+        title: candidate.title, state: 'canceled', progress: 0 });
     return item ? { ...item } : null;
   });
   if (!updated) return null;
@@ -465,6 +494,33 @@ async function stopBatch() {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId: item.jobId });
   }
   return updated.batch;
+}
+
+async function retryBatchFailures() {
+  const operation = batchMutations.then(async () => {
+    const old = await getBatch() || await previousBatch();
+    if (!old || ['running', 'paused'].includes(old.state)) throw new Error('No finished batch to retry.');
+    if (!old.items.some(item => item.state === 'error')) throw new Error('No failed videos to retry.');
+    const runId = crypto.randomUUID();
+    const batch = { runId, state: 'running', items: old.items.map((item, index) => {
+      const retry = item.state === 'error';
+      return {
+        id: item.id, jobId: `batch:${runId}:${index + 1}`, url: item.url, title: item.title,
+        state: retry ? 'queued' : item.state, progress: retry ? 0 : item.progress,
+        retryCount: (item.retryCount || 0) + (retry ? 1 : 0),
+        lastError: retry ? { error: item.error, errorKey: item.errorKey, errorDetails: item.errorDetails } : item.lastError
+      };
+    }) };
+    const parsed = parseBatchUrls(batch.items.map(item => item.url).join('\n'));
+    if (parsed.invalid.length || !parsed.urls.length) throw new Error('Invalid retry URLs.');
+    await clearBatchJobs(old);
+    await chrome.storage.session.set({ batch });
+    return batch;
+  });
+  batchMutations = operation.catch(() => {});
+  const batch = await operation;
+  await advanceBatch(batch.runId);
+  return batch;
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -511,9 +567,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await removePendingFilename(message.url);
       await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: message.url });
       const source = message.jobId ?? message.tabId;
-      await setJob(source, {
-        state: 'error', error: error.message, errorKey: 'downloadFailed'
-      });
+      await setJob(source, errorStatus(error, 'save'));
       sendResponse({ success: false });
     });
     return true;
@@ -533,14 +587,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
     })().catch(async error => {
       const errorKey = /No NTU COOL video/.test(error.message) ? 'noNativeVideo' : 'downloadFailed';
-      await setJob(message.tabId, { state: 'error', error: error.message, errorKey });
+      await setJob(message.tabId, { ...errorStatus(error, 'dispatch'), errorKey });
       sendResponse({ success: false, error: error.message, errorKey });
     });
     return true;
   }
 
   if (message.action === 'getBatchStatus') {
-    getBatch().then(batch => sendResponse({ batch }));
+    getBatch().then(async batch => sendResponse({ batch: batch || await previousBatch() }))
+      .catch(error => sendResponse({ success: false, error: redact(error.message) }));
+    return true;
+  }
+
+  if (message.action === 'retryBatchFailures') {
+    retryBatchFailures().then(batch => sendResponse({ success: true, batch }))
+      .catch(error => sendResponse({ success: false, error: redact(error.message), errorKey: 'downloadFailed' }));
     return true;
   }
 
@@ -571,17 +632,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === 'pauseBatch') {
-    pauseBatch().then(batch => sendResponse({ batch }));
+    pauseBatch().then(batch => sendResponse({ batch }))
+      .catch(error => sendResponse({ success: false, error: redact(error.message) }));
     return true;
   }
 
   if (message.action === 'resumeBatch') {
-    resumeBatch().then(batch => sendResponse({ batch }));
+    resumeBatch().then(batch => sendResponse({ batch }))
+      .catch(error => sendResponse({ success: false, error: redact(error.message) }));
     return true;
   }
 
   if (message.action === 'stopBatch') {
-    stopBatch().then(batch => sendResponse({ batch }));
+    stopBatch().then(batch => sendResponse({ batch }))
+      .catch(error => sendResponse({ success: false, error: redact(error.message) }));
     return true;
   }
 });

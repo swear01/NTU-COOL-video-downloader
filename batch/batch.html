@@ -13,13 +13,18 @@
     textarea { width: 100%; min-height: 260px; resize: vertical; border: 1px solid var(--border); border-radius: 10px; padding: 14px; color: inherit; background: var(--surface); font: inherit; line-height: 1.5; }
     textarea:focus-visible, button:focus-visible { outline: 2px solid var(--button); outline-offset: 2px; }
     textarea.invalid { border-color: var(--error); }
-    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 16px; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
     button { border: 0; border-radius: 8px; padding: 11px; color: white; background: var(--button); font: inherit; font-weight: 600; cursor: pointer; }
     button:hover:not(:disabled) { background: var(--button-hover); }
     button:disabled { cursor: default; background: var(--disabled); }
     progress { width: 100%; height: 14px; margin-top: 24px; accent-color: var(--button); }
     #detail { min-height: 1.4em; margin: 10px 0 0; color: var(--foreground); }
     #error { min-height: 1.4em; margin: 10px 0 0; color: var(--error); }
+    details { border-bottom: 1px solid var(--border); padding: 14px 0; }
+    summary { cursor: pointer; overflow-wrap: anywhere; }
+    pre, details p { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+    #storageError { color: var(--error); }
+    #copyText { min-height: 160px; }
   </style>
 </head>
 <body>
@@ -33,6 +38,17 @@
   <progress id="progress" max="100" value="0"></progress>
   <p id="detail"></p>
   <p id="error" role="alert" aria-live="polite"></p>
+  <p id="summary"></p>
+  <p id="storageError" role="alert"></p>
+  <div class="controls">
+    <button id="retry" disabled></button>
+    <button id="copyFailed" disabled></button>
+    <button id="copyReport" disabled></button>
+    <button id="exportReport" disabled></button>
+  </div>
+  <p id="notice" role="status"></p>
+  <textarea id="copyText" readonly hidden spellcheck="false"></textarea>
+  <div id="results"></div>
   <script type="module" src="batch.js"></script>
 </body>
 </html>

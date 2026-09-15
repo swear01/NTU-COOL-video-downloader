@@ -91,5 +91,62 @@
   },
   "untitledVideo": {
     "message": "NTU COOL video"
+  },
+  "retry": {
+    "message": "Retry failed videos"
+  },
+  "copyFailed": {
+    "message": "Copy failed URLs"
+  },
+  "copyReport": {
+    "message": "Copy error report"
+  },
+  "exportReport": {
+    "message": "Export JSON report"
+  },
+  "copied": {
+    "message": "Copied."
+  },
+  "copyFallback": {
+    "message": "Copy failed. Select the report below and copy manually."
+  },
+  "previousBatch": {
+    "message": "Previous batch (downloads were not resumed)"
+  },
+  "previousError": {
+    "message": "Previous attempt error:"
+  },
+  "reportSaveFailed": {
+    "message": "Could not save the report. Export it before closing the browser."
+  },
+  "discoveryTimeout": {
+    "message": "No video manifest was detected within 30 seconds. Check login and page access."
+  },
+  "state_queued": {
+    "message": "Queued"
+  },
+  "state_opening": {
+    "message": "Opening page"
+  },
+  "state_preparing": {
+    "message": "Preparing"
+  },
+  "state_downloading": {
+    "message": "Downloading"
+  },
+  "state_processing": {
+    "message": "Combining"
+  },
+  "state_saving": {
+    "message": "Saving"
+  },
+  "state_complete": {
+    "message": "Complete"
+  },
+  "state_error": {
+    "message": "Failed"
+  },
+  "state_canceled": {
+    "message": "Canceled"
   }
 }

@@ -197,3 +197,23 @@ test('blends reported speed after a measurement window resets', async () => {
     performance.now = originalNow;
   }
 });
+
+test('reports the failed segment and does not retry an MP4 consumer failure', async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  try {
+    globalThis.fetch = async () => { attempts++; return { ok: false, status: 404 }; };
+    const task = { kind: 'video', index: 294, url: 'https://media.example/video-295.m4s' };
+    await assert.rejects(downloadAdaptive([task], () => {}), error => {
+      assert.equal(error.httpStatus, 404);
+      assert.equal(error.segment, 295);
+      assert.equal(error.attempts, 3);
+      assert.equal(error.resource, task.url);
+      return true;
+    });
+    attempts = 0;
+    globalThis.fetch = async () => { attempts++; return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) }; };
+    await assert.rejects(downloadAdaptive([task], () => { throw new RangeError('Array buffer allocation failed'); }), RangeError);
+    assert.equal(attempts, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});

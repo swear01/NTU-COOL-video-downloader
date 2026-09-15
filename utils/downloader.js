@@ -82,17 +82,22 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
     const run = async task => {
       active += 1;
       const request = new AbortController();
-      const timeout = setTimeout(() => request.abort(), 30000);
+      let timedOut = false;
+      let consuming = false;
+      const timeout = setTimeout(() => { timedOut = true; request.abort(); }, 30000);
       requests.add(request);
       control.requests.add(request);
       try {
         const response = await fetch(task.url, { signal: request.signal });
         if (!response.ok) {
           const error = new Error(`HTTP ${response.status}`);
+          error.httpStatus = response.status;
           error.throttled = response.status === 429 || response.status === 503;
           throw error;
         }
         const buffer = await response.arrayBuffer();
+        clearTimeout(timeout);
+        consuming = true;
         await onData(task, buffer, response.url || task.url);
         completed += 1;
         windowCompleted += 1;
@@ -113,10 +118,11 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
           windowCompleted = 0;
           windowStarted = performance.now();
         }
-        onProgress({ completed, total: tasks.length, concurrency: adaptive.value, bytesPerSecond });
+        await onProgress({ completed, total: tasks.length, concurrency: adaptive.value, bytesPerSecond });
+        consuming = false;
       } catch (error) {
         if (stopped) return;
-        if (control.state === 'paused') {
+        if (control.state === 'paused' && !consuming) {
           queue.unshift(task);
           windowBytes = 0;
           windowCompleted = 0;
@@ -126,6 +132,12 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
         }
         if (control.state === 'canceled') return stop(new Error('Download canceled.'));
         task.attempts += 1;
+        Object.assign(error, {
+          resource: task.url, track: task.kind, segment: task.index == null ? undefined : task.index + 1,
+          attempts: task.attempts,
+          ...(timedOut ? { code: 'request_timeout' } : {})
+        });
+        if (consuming) return stop(error);
         adaptive.observe({ throughput: 0, completed: 0, errors: 1, throttled: error.throttled });
         if (task.attempts >= 3) return stop(error);
         await sleep(error.throttled ? 1000 * task.attempts : 250 * task.attempts);
