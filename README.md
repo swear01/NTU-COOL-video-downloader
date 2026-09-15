@@ -9,7 +9,7 @@
 
 [Privacy Policy](PRIVACY.md)
 
-A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or external service.
+A small Chromium extension for downloading native NTU COOL videos as MP4 files. It uses the session that is already open in the browser; there is no login automation, helper application, or developer-operated service.
 
 ## Features
 
@@ -61,10 +61,10 @@ Batch mode supports direct `/courses/.../modules/items/...` links only.
 | `storage` | Keeps temporary manifest, job, and batch-queue state in memory-backed `storage.session` so service-worker suspension does not lose it; saves the latest sanitized batch report in `storage.local`. |
 | `offscreen` | Runs the download and MP4 assembly after the popup closes. |
 | `downloads` | Hands the completed MP4 to the browser download manager. |
-| `https://*.dlc.ntu.edu.tw/*` | Limits network access to NTU's video media hosts. |
+| `https://*.dlc.ntu.edu.tw/*` | Accesses NTU video authorization, metadata, and media hosts. |
 | Optional `https://cool.ntu.edu.tw/*` | Granted only after the user starts a batch, so the extension can fetch the pasted pages with the existing login and obtain fresh video authorization. |
 
-The extension cannot read or export cookies or passwords and has no access to general browsing history or unrelated websites. The browser supplies the existing login cookies for authorized COOL requests. It has no analytics, telemetry, advertising, or remote code. Signed source URLs remain in temporary session state; persistent reports omit them.
+The extension cannot read or export cookies or passwords and has no access to general browsing history or unrelated websites. The browser supplies the existing login cookies for authorized COOL requests. Batch mode temporarily parses COOL-provided LTI fields, which may include a name, email address, account identifiers, and an authorization signature, and posts them only to the official video service. The fields are not persisted or sent to the developer. It has no analytics, telemetry, advertising, or remote code. Signed source URLs remain in temporary session state; persistent reports omit them.
 
 ## Release safety and verification
 
