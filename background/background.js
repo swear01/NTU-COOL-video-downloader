@@ -653,8 +653,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Restore pending filenames only after every wake listener above is
-// registered synchronously. Chrome queues events until the worker finishes
-// its initial evaluation, so the onDeterminingFilename listener below is in
-// place before any download's filename can be determined.
-await restorePendingFilenames();
+// Service worker modules cannot use top-level await. Register wake listeners
+// synchronously, then restore the pending filename state in the background.
+void restorePendingFilenames();

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 function event() {
   return {
@@ -240,21 +241,29 @@ test('restores a pending filename after worker suspension', async () => {
   assert.deepEqual(suggestion, { filename: 'video.mp4', conflictAction: 'uniquify' });
 });
 
-test('registers wake listeners synchronously while pending filenames restore', async () => {
+test('worker module loads synchronously without top-level await', () => {
+  const mock = mockChrome({});
+  globalThis.chrome = mock.chromeApi;
+  assert.doesNotThrow(() => createRequire(import.meta.url)('../background/background.js'));
+  assert.notEqual(mock.chromeApi.runtime.onInstalled.listener, undefined);
+  assert.notEqual(mock.chromeApi.runtime.onMessage.listener, undefined);
+});
+
+test('registers wake listeners synchronously while pending filenames restore', { timeout: 1000 }, async () => {
   const store = { 'pending-filename:blob:slow': 'video.mp4' };
   const slow = mockChrome(store);
-  slow.chromeApi.storage.session.get = keys => new Promise(resolve => {
-    setTimeout(() => resolve(keys === null ? { ...store } : {}), 50);
-  });
+  let finishRestore;
+  slow.chromeApi.storage.session.get = () => new Promise(resolve => { finishRestore = resolve; });
   globalThis.chrome = slow.chromeApi;
-  const loading = import(`../background/background.js?slow=${Date.now()}`);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  await import(`../background/background.js?slow=${Date.now()}`);
 
   // A slow storage read must not postpone the listeners that wake the worker.
   assert.notEqual(slow.chromeApi.runtime.onMessage.listener, undefined);
   assert.notEqual(slow.chromeApi.downloads.onChanged.listener, undefined);
 
-  await loading;
+  assert.equal(slow.chromeApi.downloads.onDeterminingFilename.listener, undefined);
+  finishRestore({ ...store });
+  await Promise.resolve();
   let suggestion;
   slow.chromeApi.downloads.onDeterminingFilename.listener(
     { url: 'blob:slow' }, value => { suggestion = value; }
