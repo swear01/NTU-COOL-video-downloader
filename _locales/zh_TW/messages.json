@@ -91,5 +91,71 @@
   },
   "untitledVideo": {
     "message": "NTU COOL 影片"
+  },
+  "retry": {
+    "message": "重試失敗影片"
+  },
+  "copyFailed": {
+    "message": "複製失敗網址"
+  },
+  "copyReport": {
+    "message": "複製錯誤報告"
+  },
+  "exportReport": {
+    "message": "匯出 JSON 報告"
+  },
+  "copied": {
+    "message": "已複製。"
+  },
+  "copyFallback": {
+    "message": "自動複製失敗，請選取下方文字手動複製。"
+  },
+  "previousBatch": {
+    "message": "上次批次紀錄（未自動續傳）"
+  },
+  "previousError": {
+    "message": "上次嘗試的錯誤："
+  },
+  "reportSaveFailed": {
+    "message": "無法保存報告，請在關閉瀏覽器前匯出。"
+  },
+  "discoveryTimeout": {
+    "message": "30 秒內未偵測到影片清單，請確認登入與頁面存取。"
+  },
+  "state_queued": {
+    "message": "等待中"
+  },
+  "state_opening": {
+    "message": "開啟頁面中"
+  },
+  "state_preparing": {
+    "message": "準備中"
+  },
+  "state_downloading": {
+    "message": "下載中"
+  },
+  "state_processing": {
+    "message": "合併中"
+  },
+  "state_saving": {
+    "message": "儲存中"
+  },
+  "state_complete": {
+    "message": "成功"
+  },
+  "state_error": {
+    "message": "失敗"
+  },
+  "state_canceled": {
+    "message": "已取消"
+  },
+  "batchAlreadyActive": {
+    "message": "已有批次正在執行。"
+  },
+  "noFinishedBatch": {
+    "message": "沒有已結束的批次可重試。"
+  },
+  "noFailedVideos": {
+    "message": "沒有失敗影片可重試。"
   }
 }

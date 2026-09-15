@@ -2,12 +2,13 @@
 
 ```
 background/   Service worker: manifest capture, download orchestration,
-              batch queue, filename determination (scoped listener)
-batch/        Batch-download page (paste COOL video-page links)
+              batch queue + latest local report, filename determination (scoped listener)
+batch/        Batch-download page: selectable results, copy/export, failed-only retry
 offscreen/    Offscreen document: parallel fragment download + MP4 remux
 popup/        Extension popup UI
 utils/        core (sanitizeFilename, ManifestStore), downloader (adaptive
-              concurrency), remuxer, mpd, offscreen helpers
+              concurrency), remuxer (bounded MP4 Blob + tail coverage), mpd,
+              offscreen, diagnostics (error formatting/redaction/report serialization)
 scripts/      package.sh (ZIP), publish-cws.mjs (Chrome Web Store API V2)
 store/        chrome-web-store.md (listing copy), publishing.md (release
               pipeline + one-time setup)

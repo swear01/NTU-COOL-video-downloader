@@ -7,6 +7,11 @@ fragments in parallel inside an offscreen document, remuxes them with
 MP4Box entirely in the browser, and hands the finished MP4 to the browser's
 normal download manager.
 
+Batch mode preserves selectable per-video results and structured errors, with
+copy/export and failed-only retry. The latest sanitized report is saved locally
+from the start of a batch and at state transitions; after a browser restart,
+unfinished entries are shown as canceled rather than automatically resumed.
+
 - Store listing: **NTU COOL Video Downloader** (item ID
   `hbmhcpfcjdbgokaloffibmehefkdjdap`), Chinese (Traditional) primary
   language, Tools category.

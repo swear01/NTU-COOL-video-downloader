@@ -46,7 +46,9 @@ Other downloader extensions (for example image or video downloaders) coexist wit
 
 The MP4 appears in the browser's normal download manager when processing finishes. The browser's existing download-location preference is respected.
 
-For batch download, right-click the extension icon and choose **Open COOL batch downloader**. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Batch mode supports direct `/courses/.../modules/items/...` links only.
+For batch download, right-click the extension icon and choose **Open COOL batch downloader**. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Completed and failed results remain visible after Stop. Expand a video row for its error stage, HTTP status, track, segment, and retry count. Use **Copy failed URLs**, **Copy error report**, or **Export JSON report** to keep a snapshot; if clipboard access fails, a selectable text box appears. **Retry failed videos** opens only failed pages again, preserving successful results. The latest report is saved locally across browser restarts; downloads do not resume automatically.
+
+Batch mode supports direct `/courses/.../modules/items/...` links only.
 
 ## Permissions and privacy
 
@@ -56,7 +58,7 @@ For batch download, right-click the extension icon and choose **Open COOL batch 
 | `alarms` | Stops waiting for a batch page that does not expose a native video. |
 | `contextMenus` | Adds the user-invoked shortcut that opens the batch-download page. |
 | `webRequest` | Detects `manifest.mpd` requests from the native player. It does not modify network traffic. |
-| `storage` | Keeps temporary manifest, job, and batch-queue state in memory-backed `storage.session` so service-worker suspension does not lose it. |
+| `storage` | Keeps temporary manifest, job, and batch-queue state in memory-backed `storage.session` so service-worker suspension does not lose it; saves the latest sanitized batch report in `storage.local`. |
 | `offscreen` | Runs the download and MP4 assembly after the popup closes. |
 | `downloads` | Hands the completed MP4 to the browser download manager. |
 | `https://*.dlc.ntu.edu.tw/*` | Limits network access to NTU's video media hosts. |
@@ -75,12 +77,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.1.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.2.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
 
 Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.1.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.2.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

@@ -1,3 +1,4 @@
+import { formatError } from '../utils/diagnostics.js';
 import { formatSpeed } from '../utils/core.js';
 
 const button = document.getElementById('download');
@@ -13,7 +14,7 @@ status.textContent = t('lookingForVideo');
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
 function show(message, error = false) {
-  status.textContent = message;
+  if (status.textContent !== message) status.textContent = message;
   status.classList.toggle('error', error);
 }
 
@@ -25,10 +26,14 @@ function render(job) {
     progress.value = job.progress;
     show(t('downloadingFragments', [String(job.progress), formatSpeed(job.bytesPerSecond)]));
   }
+  if (['processing', 'saving', 'complete'].includes(job.state)) {
+    progress.hidden = false;
+    progress.value = 100;
+  }
   if (job.state === 'processing') show(t('combiningAudioVideo'));
   if (job.state === 'saving') show('');
   if (job.state === 'complete') show('');
-  if (job.state === 'error') show(job.errorKey ? t(job.errorKey) : job.error || t('downloadFailed'), true);
+  if (job.state === 'error') show(formatError(job, t), true);
   button.disabled = !['complete', 'error'].includes(job.state);
 }
 
@@ -41,17 +46,19 @@ async function refresh() {
 }
 
 button.addEventListener('click', async () => {
-  button.disabled = true;
-  progress.hidden = false;
-  progress.value = 0;
-  show(t('preparingDownload'));
-  const response = await chrome.runtime.sendMessage({
-    action: 'startDownload',
-    tabId: tab.id,
-    title: tab.title
-  });
-  if (!response.success) show(response.errorKey ? t(response.errorKey) : response.error || t('downloadFailed'), true);
+  try {
+    button.disabled = true;
+    progress.hidden = false;
+    progress.value = 0;
+    show(t('preparingDownload'));
+    const response = await chrome.runtime.sendMessage({
+      action: 'startDownload',
+      tabId: tab.id,
+      title: tab.title
+    });
+    if (!response.success) show(formatError(response, t), true);
+  } catch (error) { show(formatError({ error: error?.message ?? error }, t), true); button.disabled = false; }
 });
 
-await refresh();
-setInterval(refresh, 500);
+await refresh().catch(error => show(formatError({ error: error?.message ?? error }, t), true));
+setInterval(() => refresh().catch(error => show(formatError({ error: error?.message ?? error }, t), true)), 500);

@@ -155,7 +155,7 @@ test('inherits missing representation SegmentTemplate attributes', () => {
   });
 });
 
-test('leaves fragmented MP4 header durations at zero', () => {
+test('leaves fragmented MP4 header durations at zero', async () => {
   const avcDecoderConfigRecord = Uint8Array.from(Buffer.from(
     'AWQAKP/hABtnZAAorNkAeAIn5cBEAAADAAQAAAMA8DxgxlgBAAZo6+LEyEw=',
     'base64'
@@ -173,7 +173,7 @@ test('leaves fragmented MP4 header durations at zero', () => {
     media_duration: 480000, channel_count: 2, samplesize: 16, samplerate: 48000
   });
 
-  const output = new Remuxer(video.getBuffer().buffer, audio.getBuffer().buffer).finish();
+  const output = await new Remuxer(video.getBuffer().buffer, audio.getBuffer().buffer).finish().arrayBuffer();
   const parsed = createFile();
   let info;
   parsed.onReady = value => { info = value; };

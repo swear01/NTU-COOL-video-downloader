@@ -197,3 +197,61 @@ test('blends reported speed after a measurement window resets', async () => {
     performance.now = originalNow;
   }
 });
+
+test('reports the failed segment and does not retry an MP4 consumer failure', async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  try {
+    globalThis.fetch = async () => { attempts++; return { ok: false, status: 404 }; };
+    const task = { kind: 'video', index: 294, url: 'https://media.example/video-295.m4s' };
+    await assert.rejects(downloadAdaptive([task], () => {}), error => {
+      assert.equal(error.httpStatus, 404);
+      assert.equal(error.segment, 295);
+      assert.equal(error.attempts, 3);
+      assert.equal(error.resource, task.url);
+      return true;
+    });
+    attempts = 0;
+    globalThis.fetch = async () => { attempts++; return { ok: true, arrayBuffer: async () => new ArrayBuffer(1) }; };
+    await assert.rejects(downloadAdaptive([task], () => { throw new RangeError('Array buffer allocation failed'); }), RangeError);
+    assert.equal(attempts, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+
+test('does not finish before the final asynchronous progress report settles', async () => {
+  const originalFetch = globalThis.fetch;
+  let rejectReport;
+  let reports = 0;
+  globalThis.fetch = async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(1) });
+  try {
+    const result = downloadAdaptive([{ url: 'a' }, { url: 'b' }], () => {}, () => {
+      if (++reports === 1) return new Promise((_, reject) => { rejectReport = reject; });
+    });
+    const checked = assert.rejects(result, /Report unavailable/);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    rejectReport(new Error('Report unavailable'));
+    await checked;
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('retries timed-out DOMExceptions and reports them without hanging', { timeout: 3000 }, async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTimeout = globalThis.setTimeout;
+  let attempts = 0;
+  globalThis.setTimeout = (callback, delay, ...args) => originalTimeout(callback, delay === 30000 ? 1 : delay, ...args);
+  globalThis.fetch = (_url, { signal }) => new Promise((_, reject) => {
+    attempts++;
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  try {
+    await assert.rejects(downloadAdaptive([{ url: 'slow', kind: 'video', index: 0 }], () => {}), error => {
+      assert.equal(error.code, 'request_timeout');
+      assert.equal(error.attempts, 3);
+      assert.equal(error.segment, 1);
+      assert.equal(error.cause.name, 'AbortError');
+      return true;
+    });
+    assert.equal(attempts, 3);
+  } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalTimeout; }
+});

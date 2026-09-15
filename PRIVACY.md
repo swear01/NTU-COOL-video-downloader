@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Effective date: August 3, 2026
+Effective date: September 15, 2026
 
 NTU COOL Video Downloader downloads native NTU COOL videos that the user is already authorized to access. All processing occurs locally in the user's browser.
 
@@ -22,7 +22,7 @@ The developer does not collect, receive, transmit, sell, or share user data. The
 
 ## Storage and retention
 
-Temporary status, batch links, page titles, and signed media URLs stay in the browser's session storage. Batch discovery tabs close after the native manifest is found or the wait times out. Generated MP4 object URLs are revoked after the browser download completes, is interrupted, or fails. Closing the browser clears remaining session storage.
+Temporary status, batch links, page titles, and signed media URLs stay in the browser's session storage. Batch discovery tabs close after the native manifest is found or the wait times out. Generated MP4 object URLs are revoked after the browser download completes, is interrupted, or fails. Closing the browser clears remaining session storage. The latest batch report is retained in `chrome.storage.local` across restarts: page URLs, titles, completion states, and diagnostic details. Media URL query strings, fragments, and credentials are removed before reporting; signed manifests and MP4 data are not saved in this report. Each new report replaces the previous report; removing the extension clears it. Reports are exported or copied only when the user requests it and are never sent to the developer.
 
 ## Permissions
 
@@ -30,7 +30,7 @@ Temporary status, batch links, page titles, and signed media URLs stay in the br
 - `alarms`: ends batch discovery when a page does not expose a native video.
 - `contextMenus`: provides the user-invoked shortcut to the batch-download page.
 - `webRequest`: detects native NTU COOL `manifest.mpd` requests without modifying traffic.
-- `storage`: preserves temporary manifest, job, and batch-queue state across service-worker suspension.
+- `storage`: preserves temporary manifest, job, and batch-queue state across service-worker suspension, and retains the latest sanitized batch report locally.
 - `offscreen`: downloads and assembles the MP4 after the popup closes.
 - `downloads`: sends the completed MP4 to the browser download manager.
 - `https://*.dlc.ntu.edu.tw/*`: limits network access to NTU COOL media hosts.
