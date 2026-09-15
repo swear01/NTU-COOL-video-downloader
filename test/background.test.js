@@ -814,3 +814,46 @@ test('an empty source report fails visibly instead of restarting discovery', asy
   assert.equal(store.batch.state, 'complete');
   assert.equal(batch.sent.filter(message => message.action === 'discover').length, 1);
 });
+
+
+test('shares offscreen setup between simultaneous callers', async () => {
+  const store = { 'manifest:1': 'https://video.dlc.ntu.edu.tw/1/manifest.mpd',
+    'manifest:2': 'https://video.dlc.ntu.edu.tw/2/manifest.mpd' };
+  const batch = mockChrome(store);
+  let finishSetup;
+  let creations = 0;
+  batch.chromeApi.offscreen.createDocument = () => {
+    creations++;
+    return new Promise(resolve => { finishSetup = resolve; });
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?shared-offscreen=${Date.now()}`);
+  const starts = [1, 2].map(tabId => send(batch.chromeApi, { action: 'startDownload', tabId, title: 'Lecture' }));
+  await new Promise(resolve => setTimeout(resolve));
+  assert.equal(creations, 1);
+  finishSetup();
+  await Promise.all(starts);
+});
+
+test('a failed cancellation report does not strand the remaining queue', async t => {
+  const store = {};
+  const batch = mockChrome(store);
+  const sendMessage = batch.chromeApi.runtime.sendMessage;
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(' '));
+  t.after(() => { console.error = original; });
+  batch.chromeApi.runtime.sendMessage = message => {
+    if (message.action === 'cancel') throw new Error('The message port closed before a response was received.');
+    return sendMessage(message);
+  };
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?cancel-report-failure=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch', urls: [
+    'https://cool.ntu.edu.tw/courses/1/modules/items/2', 'https://cool.ntu.edu.tw/courses/1/modules/items/3'
+  ] });
+  await batch.chromeApi.alarms.onAlarm.listener(batch.alarms[0]);
+  assert.equal(store.batch.items[0].errorDetails.code, 'discovery_timeout');
+  assert.equal(store.batch.items[1].state, 'opening');
+  assert.match(errors[0], /Failed to cancel offscreen job/);
+});

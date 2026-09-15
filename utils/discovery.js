@@ -19,7 +19,9 @@ export async function discoverVideo(url, signal) {
     const page = await request(url);
     const doc = new DOMParser().parseFromString(await page.text(), 'text/html');
     const form = [...doc.forms].find(candidate => {
-      const action = new URL(candidate.getAttribute('action') || '', page.url);
+      let action;
+      try { action = new URL(candidate.getAttribute('action') || '', page.url); }
+      catch { return false; }
       return action.origin === videoOrigin && /^\/ltiv1p1\/launch\/videos\/\d+$/.test(action.pathname);
     });
     if (!form) throw Object.assign(new Error('No native COOL video authorization form. Check login and course access.'), {

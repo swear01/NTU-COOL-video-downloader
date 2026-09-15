@@ -205,13 +205,20 @@ async function deleteManifest(tabId) {
   await chrome.storage.session.remove([storageKey(tabId), jobKey(tabId)]);
 }
 
-async function ensureOffscreenDocument() {
-  if (await hasOffscreenDocument(chrome, 'offscreen/offscreen.html')) return;
-  await chrome.offscreen.createDocument({
-    url: 'offscreen/offscreen.html',
-    reasons: ['BLOBS', 'DOM_PARSER'],
-    justification: 'Resolve authorized COOL video sources and combine DASH fragments.'
-  });
+let offscreenSetup = null;
+
+function ensureOffscreenDocument() {
+  if (!offscreenSetup) {
+    offscreenSetup = (async () => {
+      if (await hasOffscreenDocument(chrome, 'offscreen/offscreen.html')) return;
+      await chrome.offscreen.createDocument({
+        url: 'offscreen/offscreen.html',
+        reasons: ['BLOBS', 'DOM_PARSER'],
+        justification: 'Resolve authorized COOL video sources and combine DASH fragments.'
+      });
+    })().finally(() => { offscreenSetup = null; });
+  }
+  return offscreenSetup;
 }
 
 async function dispatchDownload({ jobId, tabId, manifestUrl, title }) {
@@ -347,7 +354,9 @@ async function cancelOffscreenJob(jobId) {
   try {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId });
   } catch (error) {
-    if (!error?.message?.includes('Receiving end does not exist')) throw error;
+    if (!error?.message?.includes('Receiving end does not exist')) {
+      console.error('Failed to cancel offscreen job:', redact(error?.message || error));
+    }
   }
 }
 

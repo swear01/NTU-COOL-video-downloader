@@ -50,7 +50,7 @@ test('rejects untrusted destinations and preserves authorization failure stages'
   const originalFetch = globalThis.fetch;
   const originalParser = globalThis.DOMParser;
   t.after(() => { globalThis.fetch = originalFetch; globalThis.DOMParser = originalParser; });
-  for (const action of ['https://evil.example/ltiv1p1/launch/videos/3', `${videoOrigin}/other`]) {
+  for (const action of ['https://[invalid', 'https://evil.example/ltiv1p1/launch/videos/3', `${videoOrigin}/other`]) {
     const calls = setup({ action });
     await assert.rejects(discoverVideo(pageUrl), { code: 'authorization_form_missing', stage: 'discovery_page' });
     assert.equal(calls.length, 1);
