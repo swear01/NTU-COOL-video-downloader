@@ -30,10 +30,9 @@
     button:hover:not(:disabled) { background: var(--button-hover); }
     button:focus-visible { outline: 2px solid var(--foreground); outline-offset: 2px; }
     button:disabled { cursor: default; background: var(--button-disabled); }
-    #status { margin: 12px 0 0; line-height: 1.4; }
+    #status { margin: 12px 0 0; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
     progress { width: 100%; margin-top: 12px; accent-color: var(--button); }
     .error { color: var(--error); }
-  #status { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
   </style>
 </head>
 <body>

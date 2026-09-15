@@ -148,5 +148,14 @@
   },
   "state_canceled": {
     "message": "已取消"
+  },
+  "batchAlreadyActive": {
+    "message": "已有批次正在執行。"
+  },
+  "noFinishedBatch": {
+    "message": "沒有已結束的批次可重試。"
+  },
+  "noFailedVideos": {
+    "message": "沒有失敗影片可重試。"
   }
 }

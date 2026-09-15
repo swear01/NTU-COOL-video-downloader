@@ -1,5 +1,5 @@
 export function redact(text) {
-  return String(text || '').replace(/https?:\/\/[^\s<>"']+/g, value => {
+  return String(text ?? '').replace(/https?:\/\/[^\s<>"']+/g, value => {
     try {
       const url = new URL(value);
       return url.origin + url.pathname;
@@ -10,6 +10,7 @@ export function redact(text) {
 }
 
 export function errorStatus(error, stage) {
+  error ??= new Error('Unknown error');
   return {
     state: 'error', errorKey: 'downloadFailed', error: redact(error.message || error),
     errorDetails: {

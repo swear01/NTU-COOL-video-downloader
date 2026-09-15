@@ -132,10 +132,10 @@ export async function downloadAdaptive(tasks, onData, onProgress = () => {}, con
         }
         if (control.state === 'canceled') return stop(new Error('Download canceled.'));
         task.attempts += 1;
+        if (timedOut) error = Object.assign(new Error('Request timed out.', { cause: error }), { code: 'request_timeout' });
         Object.assign(error, {
           resource: task.url, track: task.kind, segment: task.index == null ? undefined : task.index + 1,
-          attempts: task.attempts,
-          ...(timedOut ? { code: 'request_timeout' } : {})
+          attempts: task.attempts
         });
         if (consuming) return stop(error);
         adaptive.observe({ throughput: 0, completed: 0, errors: 1, throttled: error.throttled });

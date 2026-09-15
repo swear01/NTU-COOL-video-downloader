@@ -234,3 +234,24 @@ test('does not finish before the final asynchronous progress report settles', as
     await checked;
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('retries timed-out DOMExceptions and reports them without hanging', { timeout: 3000 }, async () => {
+  const originalFetch = globalThis.fetch;
+  const originalTimeout = globalThis.setTimeout;
+  let attempts = 0;
+  globalThis.setTimeout = (callback, delay, ...args) => originalTimeout(callback, delay === 30000 ? 1 : delay, ...args);
+  globalThis.fetch = (_url, { signal }) => new Promise((_, reject) => {
+    attempts++;
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+  try {
+    await assert.rejects(downloadAdaptive([{ url: 'slow', kind: 'video', index: 0 }], () => {}), error => {
+      assert.equal(error.code, 'request_timeout');
+      assert.equal(error.attempts, 3);
+      assert.equal(error.segment, 1);
+      assert.equal(error.cause.name, 'AbortError');
+      return true;
+    });
+    assert.equal(attempts, 3);
+  } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalTimeout; }
+});

@@ -148,5 +148,14 @@
   },
   "state_canceled": {
     "message": "Canceled"
+  },
+  "batchAlreadyActive": {
+    "message": "A batch is already active."
+  },
+  "noFinishedBatch": {
+    "message": "No finished batch to retry."
+  },
+  "noFailedVideos": {
+    "message": "No failed videos to retry."
   }
 }

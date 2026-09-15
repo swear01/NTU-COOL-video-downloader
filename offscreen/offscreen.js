@@ -64,15 +64,11 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
       control
     );
 
-    for (const tail of tails) {
-      // GPAC's nominal segment count can include a nonexistent video tail.
-      // Omit it only when every earlier segment already covers the init's declared duration.
-      stage = 'remux';
-      if (!remuxer.hasCompleteTrack(tail.kind, tail.index)) {
-        stage = 'segments';
-        await downloadAdaptive([tail], append, undefined, control);
-      }
-    }
+    // Omit an estimated tail only when contiguous samples cover the init's duration.
+    stage = 'remux';
+    const pendingTails = tails.filter(tail => !remuxer.hasCompleteTrack(tail.kind, tail.index));
+    stage = 'segments';
+    await downloadAdaptive(pendingTails, append, undefined, control);
 
     stage = 'remux';
     chrome.runtime.sendMessage({

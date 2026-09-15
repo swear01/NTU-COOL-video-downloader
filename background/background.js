@@ -111,9 +111,10 @@ function mutateBatch(runId, mutation) {
   const operation = batchMutations.then(async () => {
     const batch = await getBatch();
     if (!batch || (runId && batch.runId !== runId)) return null;
-    const before = `${batch.state}:${batch.items.map(item => item.state).join(',')}`;
+    const stateKey = () => `${batch.state}:${batch.items.map(item => item.state).join(',')}`;
+    const before = stateKey();
     const value = mutation(batch);
-    const after = `${batch.state}:${batch.items.map(item => item.state).join(',')}`;
+    const after = stateKey();
     if (before !== after && (batch.state === 'idle' || batch.state === 'complete' ||
         batch.items.some(item => ['complete', 'error'].includes(item.state)))) await saveBatchReport(batch);
     await chrome.storage.session.set({ batch });
@@ -126,7 +127,7 @@ function mutateBatch(runId, mutation) {
 function replaceBatch(batch) {
   const operation = batchMutations.then(async () => {
     const old = await getBatch();
-    if (['running', 'paused'].includes(old?.state)) throw new Error('A batch is already active.');
+    if (['running', 'paused'].includes(old?.state)) throw new Error(chrome.i18n.getMessage('batchAlreadyActive'));
     await clearBatchJobs(old);
     await chrome.storage.session.set({ batch });
     return batch;
@@ -499,8 +500,8 @@ async function stopBatch() {
 async function retryBatchFailures() {
   const operation = batchMutations.then(async () => {
     const old = await getBatch() || await previousBatch();
-    if (!old || ['running', 'paused'].includes(old.state)) throw new Error('No finished batch to retry.');
-    if (!old.items.some(item => item.state === 'error')) throw new Error('No failed videos to retry.');
+    if (!old || ['running', 'paused'].includes(old.state)) throw new Error(chrome.i18n.getMessage('noFinishedBatch'));
+    if (!old.items.some(item => item.state === 'error')) throw new Error(chrome.i18n.getMessage('noFailedVideos'));
     const runId = crypto.randomUUID();
     const batch = { runId, state: 'running', items: old.items.map((item, index) => {
       const retry = item.state === 'error';
@@ -512,7 +513,7 @@ async function retryBatchFailures() {
       };
     }) };
     const parsed = parseBatchUrls(batch.items.map(item => item.url).join('\n'));
-    if (parsed.invalid.length || !parsed.urls.length) throw new Error('Invalid retry URLs.');
+    if (parsed.invalid.length || !parsed.urls.length) throw new Error(chrome.i18n.getMessage('invalidLinks'));
     await clearBatchJobs(old);
     await chrome.storage.session.set({ batch });
     return batch;

@@ -53,8 +53,8 @@ button.addEventListener('click', async () => {
       title: tab.title
     });
     if (!response.success) show(formatError(response, t), true);
-  } catch (error) { show(error.message, true); button.disabled = false; }
+  } catch (error) { show(formatError({ error: error?.message ?? error }, t), true); button.disabled = false; }
 });
 
-await refresh().catch(error => show(error.message, true));
-setInterval(() => refresh().catch(error => show(error.message, true)), 500);
+await refresh().catch(error => show(formatError({ error: error?.message ?? error }, t), true));
+setInterval(() => refresh().catch(error => show(formatError({ error: error?.message ?? error }, t), true)), 500);

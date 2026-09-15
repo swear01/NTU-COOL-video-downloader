@@ -14,3 +14,9 @@ test('keeps actionable errors while excluding signed URLs and runtime objects fr
   assert.equal(report.items[0].errorDetails.segment, 295);
   assert.equal(report.items[0].errorDetails.stage, 'segments');
 });
+
+test('diagnostics tolerate missing errors and preserve zero-valued fields', () => {
+  assert.equal(errorStatus(null, 'dispatch').error, 'Unknown error');
+  assert.equal(errorStatus(undefined, 'dispatch').errorDetails.stage, 'dispatch');
+  assert.match(formatError({ errorDetails: { attempts: 0 } }), /attempts: 0/);
+});

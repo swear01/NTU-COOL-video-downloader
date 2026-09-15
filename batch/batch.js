@@ -46,9 +46,9 @@ function render(next) {
   stop.disabled = busy || !active;
   const failed = items.filter(item => item.state === 'error').length;
   retry.disabled = busy || active || !failed;
-  element('copyFailed').disabled = !failed;
-  element('copyReport').disabled = element('exportReport').disabled = !items.length;
-  text(element('summary'), (batch?.archived ? t('previousBatch') + ' · ' : '') +
+  element('copyFailed').disabled = busy || !failed;
+  element('copyReport').disabled = element('exportReport').disabled = busy || !items.length;
+  text(element('summary'), !items.length ? '' : (batch?.archived ? t('previousBatch') + ' · ' : '') +
     ['complete', 'error', 'canceled'].map(value =>
       `${t('state_' + value)}: ${items.filter(item => item.state === value).length}`).join(' · '));
   text(element('storageError'), batch?.storageError ? `${t('reportSaveFailed')} ${batch.storageError}` : '');
@@ -97,7 +97,7 @@ function onAction(id, callback) {
     error.textContent = '';
     render(batch);
     try { await callback(); }
-    catch (failure) { error.textContent = failure.message; }
+    catch (failure) { error.textContent = formatError({ error: failure?.message ?? failure }, t); }
     finally { busy = false; render(batch); }
   });
 }
@@ -163,4 +163,4 @@ chrome.storage.onChanged.addListener((changes, area) => {
   render(changes.batch.newValue || null);
 });
 try { await refresh(); }
-catch (failure) { error.textContent = failure.message; render(batch); }
+catch (failure) { error.textContent = formatError({ error: failure?.message ?? failure }, t); render(batch); }
