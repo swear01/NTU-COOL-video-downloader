@@ -13,7 +13,7 @@ function sourceTrack(initBuffer) {
   file.appendBuffer(MP4BoxBuffer.fromArrayBuffer(initBuffer, 0), false);
   if (!info?.tracks.length) throw new Error('Invalid MP4 initialization segment.');
   return { file, info: info.tracks[0], fragmentDuration: info.fragment_duration,
-    endTime: 0, offset: initBuffer.byteLength, pending: new Map(), next: 0 };
+    sampleDuration: 0, offset: initBuffer.byteLength, pending: new Map(), next: 0 };
 }
 
 export function mp4Blob(file) {
@@ -81,7 +81,7 @@ export class Remuxer {
       source.file.setExtractionOptions(source.info.id, undefined, { nbSamples: 1000 });
       source.file.onSamples = (_, __, samples) => {
         for (const sample of samples) {
-          source.endTime = Math.max(source.endTime, sample.cts + sample.duration);
+          source.sampleDuration += sample.duration;
           this.output.addSample(source.outputId, sample.data, {
             duration: sample.duration,
             cts: sample.cts,
@@ -102,7 +102,7 @@ export class Remuxer {
     const duration = source.fragmentDuration;
     return source.pending.size === 0 && source.next === nextIndex &&
       duration?.num > 0 && duration.den > 0 &&
-      source.endTime / source.info.timescale >= duration.num / duration.den;
+      source.sampleDuration / source.info.timescale >= duration.num / duration.den;
   }
 
   append(kind, index, buffer) {

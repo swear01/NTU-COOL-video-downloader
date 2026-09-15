@@ -60,3 +60,18 @@ test('serializes large outputs as bounded Blob parts with identical bytes', asyn
     DataStream.prototype._realloc = original;
   }
 });
+
+
+test('composition offsets do not hide a required short tail', () => {
+  const video = track('video');
+  const audio = track('audio');
+  const remuxer = new Remuxer(video.init, audio.init);
+  const start = video.file.boxes.length;
+  video.file.addSample(video.id, new Uint8Array([0, 0, 0, 1, 0x65]), {
+    duration: 9960, dts: 0, cts: 80, is_sync: true
+  });
+  const stream = new DataStream();
+  for (const box of video.file.boxes.slice(start)) box.write(stream);
+  remuxer.append('video', 0, stream.buffer);
+  assert.equal(remuxer.hasCompleteTrack('video', 1), false);
+});
