@@ -9,6 +9,10 @@ normal download manager.
 
 The popup links directly to the batch page, independently of video detection
 and the background worker; the action context menu remains another entry.
+Batch mode runs at most two videos, counting source lookup through browser saving
+as occupied slots. It overlaps source lookup with an active transfer and refills
+a slot when that video completes or fails. Pause, Resume, and Stop control both
+active jobs. Each video uses 4–32 fragment requests (at most 64 across two).
 Batch mode fetches each COOL module page with the existing login, submits its
 fresh LTI form, and reads the authorized player metadata in the offscreen
 document. It opens no per-video tabs. Stop and the 30-second discovery timeout

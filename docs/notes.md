@@ -155,3 +155,21 @@ the worker response and menu. Version 1.2.3 also passes this browser check.
   installed profile's extension-to-Canvas cookie path.
 - A separate real-worker/offscreen smoke check resolved a source while paused,
   left it queued, and stopped successfully with only the probe tab open.
+
+
+## Two concurrent videos (v1.2.5)
+
+The batch scheduler reserves at most two slots across source lookup, preparation,
+transfer, remux, and browser saving. It continues filling free slots after each
+dispatch; a completed lookup can start downloading while the other video is still
+running. Signed sources are resolved only as a slot opens. No video tabs open.
+Pause/Resume/Stop address every active job; discovery may finish while paused and
+its source waits in the queue until Resume. The UI shows both progress/speed pairs.
+
+The offscreen document keeps a DownloadControl per source and admits at most two
+transfers, including popup downloads. Each transfer adapts from 4 to 32 fragment
+requests, preserving a 64-request media ceiling across two jobs. MP4Box 2.4.1's
+addSample copies sample bytes into mdat; clear the returned output sample's data
+reference after that copy to avoid retaining duplicate media buffers. Keep mdat
+bytes until Blob serialization and retain all timing metadata. A byte-for-byte
+serialization regression test guards this dependency-specific memory release.

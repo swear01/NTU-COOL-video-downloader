@@ -15,10 +15,10 @@ A small Chromium extension for downloading native NTU COOL videos as MP4 files. 
 
 - Captures the current signed DASH manifest without reading cookies.
 - Selects the highest video resolution offered by NTU COOL and includes audio.
-- Downloads fragments in parallel with automatic concurrency from 4 to 64.
+- Downloads fragments in parallel with automatic concurrency from 4 to 32 per video (up to 64 across two videos).
 - Combines H.264 video and AAC audio entirely in the browser.
 - Sends the finished MP4 to the browser's normal download manager.
-- Downloads a pasted list of direct NTU COOL video-page links one at a time.
+- Downloads a pasted list of direct NTU COOL video-page links, with up to two videos at a time.
 - Provides English and Traditional Chinese interfaces.
 - Keeps each tab isolated and clears captured URLs when the tab navigates or closes.
 
@@ -46,7 +46,7 @@ Other downloader extensions (for example image or video downloaders) coexist wit
 
 The MP4 appears in the browser's normal download manager when processing finishes. The browser's existing download-location preference is respected.
 
-For batch download, click the extension icon and select **Open COOL batch downloader** in the popup, or use the same entry in the icon's right-click menu. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends the active transfer and **Stop** cancels the queue. Completed and failed results remain visible after Stop. Expand a video row for its error stage, HTTP status, track, segment, and retry count. Use **Copy failed URLs**, **Copy error report**, or **Export JSON report** to keep a snapshot; if clipboard access fails, a selectable text box appears. **Retry failed videos** obtains fresh authorization only for failed videos, preserving successful results. Batch downloads resolve each video through COOL authorization and metadata requests without opening video tabs. The latest report is saved locally across browser restarts; downloads do not resume automatically.
+For batch download, click the extension icon and select **Open COOL batch downloader** in the popup, or use the same entry in the icon's right-click menu. Paste direct video-page links, one per line, then select **Start**. **Pause** suspends both active transfers and **Stop** cancels the queue. Completed and failed results remain visible after Stop. Expand a video row for its error stage, HTTP status, track, segment, and retry count. Use **Copy failed URLs**, **Copy error report**, or **Export JSON report** to keep a snapshot; if clipboard access fails, a selectable text box appears. **Retry failed videos** obtains fresh authorization only for failed videos, preserving successful results. Up to two videos run concurrently, so the next source lookup overlaps an active download. Each active video has its own progress and speed. Batch downloads resolve each video through COOL authorization and metadata requests without opening video tabs. The latest report is saved locally across browser restarts; downloads do not resume automatically.
 
 Batch mode supports direct `/courses/.../modules/items/...` links only.
 
@@ -77,12 +77,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.4.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
+On Windows, run `Get-FileHash .\NTU-COOL-video-downloader-1.2.5.zip -Algorithm SHA256` in PowerShell and compare it with `SHA256SUMS`.
 
 Verify the signed build provenance with the [GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.4.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.5.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

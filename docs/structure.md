@@ -2,9 +2,9 @@
 
 ```
 background/   Service worker: manifest capture, download orchestration,
-              batch queue + latest local report, source resolution dispatch, filename determination (scoped listener)
+              two-video batch queue + latest local report, source resolution dispatch, filename determination (scoped listener)
 batch/        Batch-download page: selectable results, copy/export, failed-only retry
-offscreen/    Offscreen document: parallel fragment download + MP4 remux
+offscreen/    Offscreen document: two independent transfers + parallel fragments + MP4 remux
 popup/        Extension popup UI
 utils/        core (sanitizeFilename, ManifestStore), downloader (adaptive
               concurrency), remuxer (bounded MP4 Blob + tail coverage), mpd,

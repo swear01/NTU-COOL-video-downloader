@@ -35,7 +35,7 @@ export function buildSegments(track, presentationDuration, manifestUrl) {
 }
 
 export class AdaptiveConcurrency {
-  constructor({ initial = 8, minimum = 4, maximum = 64 } = {}) {
+  constructor({ initial = 8, minimum = 4, maximum = 32 } = {}) {
     this.value = initial;
     this.minimum = minimum;
     this.maximum = maximum;
@@ -116,9 +116,9 @@ export function batchProgress(items) {
 
 const activeBatchStates = new Set(['opening', 'preparing', 'downloading', 'processing', 'saving']);
 
-export function activeBatchItem(items) {
-  const index = items.findIndex(item => activeBatchStates.has(item.state));
-  return index === -1 ? null : { index, item: items[index] };
+export function activeBatchItems(items) {
+  return items.map((item, index) => ({ item, index }))
+    .filter(({ item }) => activeBatchStates.has(item.state));
 }
 
 export function formatSpeed(bytesPerSecond) {

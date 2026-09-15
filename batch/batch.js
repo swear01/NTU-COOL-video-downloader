@@ -1,4 +1,4 @@
-import { activeBatchItem, batchProgress, formatSpeed, parseBatchUrls } from '../utils/core.js';
+import { activeBatchItems, batchProgress, formatSpeed, parseBatchUrls } from '../utils/core.js';
 import { batchReport, formatError } from '../utils/diagnostics.js';
 
 const element = id => document.getElementById(id);
@@ -41,10 +41,10 @@ function render(next) {
     seedUrls = false;
   }
   element('progress').value = batchProgress(items);
-  const current = activeBatchItem(items);
-  text(element('detail'), current ? t('batchProgressDetail', [String(current.index + 1),
+  const current = activeBatchItems(items);
+  text(element('detail'), current.map(current => t('batchProgressDetail', [String(current.index + 1),
     String(items.length), String(Math.round(current.item.progress || 0)),
-    formatSpeed(current.item.bytesPerSecond)]) : '');
+    formatSpeed(state === 'paused' ? 0 : current.item.bytesPerSecond)])).join(' · '));
   urls.readOnly = active;
   start.disabled = busy || state === 'running' || (state !== 'paused' && !urls.value.trim());
   pause.disabled = busy || state !== 'running';

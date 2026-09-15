@@ -4,15 +4,15 @@ import { parseMpd } from '../utils/mpd.js';
 import { Remuxer } from '../utils/remuxer.js';
 import { errorStatus, redact } from '../utils/diagnostics.js';
 
-let current = null;
+const transfers = new Map();
 const objectUrls = new Set();
 const discoveries = new Map();
 
 async function download({ jobId, tabId, manifestUrl, filename }) {
-  if (current) throw new Error('Another video download is already running.');
   const source = jobId ?? tabId;
+  if (transfers.has(source) || transfers.size >= 2) throw new Error('Two video downloads are already running.');
   const control = new DownloadControl();
-  current = { source, control };
+  transfers.set(source, control);
   let stage = 'manifest';
   let blobUrl;
   try {
@@ -91,7 +91,7 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
     error.stage ||= stage;
     throw error;
   } finally {
-    current = null;
+    transfers.delete(source);
   }
 }
 
@@ -123,8 +123,7 @@ chrome.runtime.onMessage.addListener(message => {
     return;
   }
   if (['pause', 'resume', 'cancel'].includes(message.action)) {
-    if (current?.source !== (message.jobId ?? message.tabId)) return;
-    current.control[message.action]();
+    transfers.get(message.jobId ?? message.tabId)?.[message.action]();
     return;
   }
   if (message.action === 'download') {

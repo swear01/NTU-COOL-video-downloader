@@ -757,6 +757,7 @@ test('keeps a resolved source queued while paused, then downloads on Resume', as
   assert.equal(store.batch.items[0].state, 'queued');
   assert.equal(batch.sent.some(message => message.action === 'download'), false);
   await send(batch.chromeApi, { action: 'resumeBatch' });
+  await new Promise(resolve => setTimeout(resolve));
   assert.equal(batch.sent.at(-1).action, 'download');
   assert.equal(batch.createdTabs.length, 0);
 });
@@ -856,4 +857,82 @@ test('a failed cancellation report does not strand the remaining queue', async t
   assert.equal(store.batch.items[0].errorDetails.code, 'discovery_timeout');
   assert.equal(store.batch.items[1].state, 'opening');
   assert.match(errors[0], /Failed to cancel offscreen job/);
+});
+
+
+test('runs two videos, overlaps discovery, and refills only the finished slot', async () => {
+  const store = {};
+  const mock = mockChrome(store);
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?two-slots=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'startBatch', urls: [1, 2, 3, 4].map(id =>
+    `https://cool.ntu.edu.tw/courses/1/modules/items/${id}`) });
+  assert.deepEqual(store.batch.items.map(item => item.state), ['opening', 'opening', 'queued', 'queued']);
+  await discovered(mock, store);
+  await send(mock.chromeApi, { target: 'background', action: 'progress', jobId: store.batch.items[0].jobId,
+    status: { state: 'downloading', progress: 40 } });
+  assert.equal(store.batch.items[1].state, 'opening');
+  await discovered(mock, store);
+  assert.equal(mock.sent.filter(message => message.action === 'download').length, 2);
+  assert.equal(store.batch.items[2].state, 'queued');
+  await send(mock.chromeApi, { target: 'background', action: 'ready', jobId: store.batch.items[1].jobId,
+    filename: 'Second.mp4', url: 'blob:second' });
+  assert.equal(store.batch.items[2].state, 'queued', 'saving still occupies a slot');
+  await mock.chromeApi.downloads.onChanged.listener({ id: 7, state: { current: 'complete' } });
+  await new Promise(resolve => setTimeout(resolve));
+  assert.deepEqual(store.batch.items.map(item => item.state), ['downloading', 'complete', 'opening', 'queued']);
+  await send(mock.chromeApi, { target: 'background', action: 'discovered', jobId: store.batch.items[2].jobId,
+    status: { state: 'error', error: 'HTTP 401' } });
+  assert.deepEqual(store.batch.items.map(item => item.state), ['downloading', 'complete', 'error', 'opening']);
+  assert.equal(store.batch.items[0].progress, 40);
+  assert.equal(store.batch.state, 'running');
+  assert.equal(mock.createdTabs.length, 0);
+  await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.deepEqual(mock.sent.filter(message => message.action === 'cancel').map(message => message.jobId),
+    [store.batch.items[0].jobId, store.batch.items[3].jobId]);
+});
+
+test('controls both transfers, resumes a newly resolved slot, and cancels both browser saves', async () => {
+  const store = {};
+  let nextId = 20;
+  const mock = mockChrome(store, async () => nextId++);
+  const browserControls = [];
+  for (const action of ['pause', 'resume', 'cancel']) {
+    mock.chromeApi.downloads[action] = async id => { browserControls.push([action, id]); };
+  }
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?two-controls=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'startBatch', urls: [1, 2].map(id =>
+    `https://cool.ntu.edu.tw/courses/1/modules/items/${id}`) });
+  await discovered(mock, store);
+  await send(mock.chromeApi, { action: 'pauseBatch' });
+  await discovered(mock, store);
+  assert.deepEqual(store.batch.items.map(item => item.state), ['preparing', 'queued']);
+  await send(mock.chromeApi, { action: 'resumeBatch' });
+  await new Promise(resolve => setTimeout(resolve));
+  assert.deepEqual(store.batch.items.map(item => item.state), ['preparing', 'preparing']);
+  await send(mock.chromeApi, { action: 'pauseBatch' });
+  assert.deepEqual(mock.sent.slice(-2).map(message => [message.action, message.jobId]),
+    store.batch.items.map(item => ['pause', item.jobId]));
+  await send(mock.chromeApi, { action: 'resumeBatch' });
+  assert.deepEqual(mock.sent.slice(-2).map(message => [message.action, message.jobId]),
+    store.batch.items.map(item => ['resume', item.jobId]));
+  await Promise.all(store.batch.items.map((item, index) => send(mock.chromeApi, {
+    target: 'background', action: 'ready', jobId: item.jobId, filename: `${index}.mp4`, url: `blob:${index}`
+  })));
+  const suggestions = [];
+  for (const index of [1, 0]) {
+    mock.chromeApi.downloads.onDeterminingFilename.listener({ url: `blob:${index}` }, value => suggestions.push(value.filename));
+    await new Promise(resolve => setTimeout(resolve));
+    if (index === 1) assert.ok(mock.chromeApi.downloads.onDeterminingFilename.listener);
+  }
+  assert.deepEqual(suggestions, ['1.mp4', '0.mp4']);
+  assert.equal(mock.chromeApi.downloads.onDeterminingFilename.listener, undefined);
+  await send(mock.chromeApi, { action: 'pauseBatch' });
+  await send(mock.chromeApi, { action: 'resumeBatch' });
+  await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.deepEqual(browserControls, [['pause', 20], ['pause', 21], ['resume', 20], ['resume', 21], ['cancel', 20], ['cancel', 21]]);
+  assert.equal(store['download:20'], undefined);
+  assert.equal(store['download:21'], undefined);
+  assert.deepEqual(mock.sent.filter(message => message.action === 'release').map(message => message.url).sort(), ['blob:0', 'blob:1']);
 });

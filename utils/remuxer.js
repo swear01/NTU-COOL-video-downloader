@@ -82,12 +82,14 @@ export class Remuxer {
       source.file.onSamples = (_, __, samples) => {
         for (const sample of samples) {
           source.sampleDuration += sample.duration;
-          this.output.addSample(source.outputId, sample.data, {
+          const outputSample = this.output.addSample(source.outputId, sample.data, {
             duration: sample.duration,
             cts: sample.cts,
             dts: sample.dts,
             is_sync: sample.is_sync
           });
+          // MP4Box 2.4.1 already copied these bytes into the output mdat.
+          outputSample.data = null;
         }
         source.file.releaseUsedSamples(source.info.id, samples.at(-1).number + 1);
         releaseMdatBuffers(source.file);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   AdaptiveConcurrency,
-  activeBatchItem,
+  activeBatchItems,
   batchProgress,
   buildSegments,
   formatSpeed,
@@ -117,12 +117,12 @@ test('reports overall batch progress by completed and active videos', () => {
 });
 
 test('finds the active batch item and formats download speed', () => {
-  assert.equal(activeBatchItem([
+  assert.deepEqual(activeBatchItems([
     { state: 'complete', progress: 100 },
     { state: 'downloading', progress: 40, bytesPerSecond: 1500 },
-    { state: 'queued', progress: 0 }
-  ]).index, 1);
-  assert.equal(activeBatchItem([{ state: 'queued', progress: 0 }]), null);
+    { state: 'preparing', progress: 0 }
+  ]).map(entry => entry.index), [1, 2]);
+  assert.deepEqual(activeBatchItems([{ state: 'queued', progress: 0 }]), []);
   assert.equal(formatSpeed(0), '0 B/s');
   assert.equal(formatSpeed(900), '900 B/s');
   assert.equal(formatSpeed(1536), '1.5 KB/s');
@@ -193,4 +193,11 @@ test('releases consumed source mdat buffers after extracting samples', () => {
   releaseMdatBuffers(file);
   assert.equal(cleaned, 2);
   assert.equal(file.mdats.length, 0);
+});
+
+
+test('caps each video at 32 fragment requests, so two videos stay at 64', () => {
+  const adaptive = new AdaptiveConcurrency();
+  for (let step = 0; step < 30; step++) adaptive.observe({ throughput: 2 ** step, completed: 16, errors: 0 });
+  assert.equal(adaptive.value, 32);
 });
