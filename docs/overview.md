@@ -7,6 +7,8 @@ fragments in parallel inside an offscreen document, remuxes them with
 MP4Box entirely in the browser, and hands the finished MP4 to the browser's
 normal download manager.
 
+The popup links directly to the batch page, independently of video detection
+and the background worker; the action context menu remains another entry.
 Batch mode preserves selectable per-video results and structured errors, with
 copy/export and failed-only retry. The latest sanitized report is saved locally
 from the start of a batch and at state transitions; after a browser restart,

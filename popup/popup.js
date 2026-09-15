@@ -10,6 +10,7 @@ document.documentElement.lang = chrome.i18n.getUILanguage();
 document.title = t('extensionName');
 title.textContent = t('extensionName');
 button.textContent = t('downloadVideo');
+document.getElementById('batch').textContent = t('contextOpenBatch');
 status.textContent = t('lookingForVideo');
 const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
