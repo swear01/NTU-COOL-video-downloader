@@ -1,4 +1,4 @@
-import { ManifestStore, parseBatchUrls, sanitizeFilename } from '../utils/core.js';
+import { ManifestStore, activeBatchItems, parseBatchUrls, sanitizeFilename } from '../utils/core.js';
 import { hasOffscreenDocument } from '../utils/offscreen.js';
 import { batchReport, errorStatus, redact } from '../utils/diagnostics.js';
 
@@ -239,7 +239,9 @@ async function dispatchDownload({ jobId, tabId, manifestUrl, title }) {
   });
   const current = jobId && await mutateBatch(null, batch =>
     batch.items.some(item => item.jobId === jobId) ? batch.state : null);
-  if (current?.value === 'paused') {
+  if (jobId && !['running', 'paused'].includes(current?.value)) {
+    await cancelOffscreenJob(jobId);
+  } else if (current?.value === 'paused') {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'pause', jobId });
   }
 }
@@ -262,11 +264,13 @@ async function advanceBatch(runId) {
     while (true) {
       const selected = await mutateBatch(runId, batch => {
         if (batch.state !== 'running') return { action: 'stop' };
-        if (batch.items.some(item => ['opening', 'preparing', 'downloading', 'processing', 'saving'].includes(item.state))) {
+        const active = activeBatchItems(batch.items);
+        if (active.length >= 2) {
           return { action: 'wait' };
         }
         const item = batch.items.find(candidate => candidate.state === 'queued');
         if (!item) {
+          if (active.length) return { action: 'wait' };
           batch.state = 'complete';
           return { action: 'complete' };
         }
@@ -287,7 +291,7 @@ async function advanceBatch(runId) {
       }
       if (action.action === 'download') {
         await startBatchItem(action.item);
-        return;
+        continue;
       }
       try {
         await ensureOffscreenDocument();
@@ -304,7 +308,7 @@ async function advanceBatch(runId) {
         if (!active?.value) {
           await cancelOffscreenJob(action.item.jobId);
         }
-        return;
+        continue;
       } catch (error) {
         await mutateBatch(runId, batch => {
           const item = batch.items.find(candidate => candidate.jobId === action.item.jobId && candidate.state === 'opening');
@@ -448,16 +452,23 @@ async function updateBatchDownloadId(jobId, downloadId) {
   });
 }
 
+async function settleControls(operations) {
+  const results = await Promise.allSettled(operations);
+  const errors = results.filter(result => result.status === 'rejected')
+    .map(result => redact(result.reason?.message || result.reason));
+  if (errors.length) throw new Error(errors.join('; '));
+}
+
 async function pauseBatch() {
   const updated = await mutateBatch(null, batch => {
     if (batch.state !== 'running') return null;
     batch.state = 'paused';
-    const item = batch.items.find(candidate => ['preparing', 'downloading', 'processing', 'saving'].includes(candidate.state));
-    return item ? { ...item } : null;
+    return activeBatchItems(batch.items).filter(({ item }) => item.state !== 'opening')
+      .map(({ item }) => ({ ...item }));
   });
-  const item = updated?.value;
-  if (item?.state === 'saving' && item.downloadId != null) await chrome.downloads.pause(item.downloadId);
-  else if (item) await chrome.runtime.sendMessage({ target: 'offscreen', action: 'pause', jobId: item.jobId });
+  await settleControls((updated?.value || []).map(item =>
+    item.state === 'saving' && item.downloadId != null ? chrome.downloads.pause(item.downloadId)
+      : chrome.runtime.sendMessage({ target: 'offscreen', action: 'pause', jobId: item.jobId })));
   return updated?.batch || null;
 }
 
@@ -465,42 +476,51 @@ async function resumeBatch() {
   const updated = await mutateBatch(null, batch => {
     if (batch.state !== 'paused') return null;
     batch.state = 'running';
-    const item = batch.items.find(candidate => ['preparing', 'downloading', 'processing', 'saving'].includes(candidate.state));
-    return { item: item ? { ...item } : null, runId: batch.runId };
+    return { items: activeBatchItems(batch.items).filter(({ item }) => item.state !== 'opening')
+      .map(({ item }) => ({ ...item })), runId: batch.runId };
   });
-  const item = updated?.value?.item;
-  if (item?.state === 'saving' && item.downloadId != null) await chrome.downloads.resume(item.downloadId);
-  else if (item) await chrome.runtime.sendMessage({ target: 'offscreen', action: 'resume', jobId: item.jobId });
-  else if (updated?.value) await continueBatch(updated.value.runId);
+  try {
+    await settleControls((updated?.value?.items || []).map(item =>
+      item.state === 'saving' && item.downloadId != null ? chrome.downloads.resume(item.downloadId)
+        : chrome.runtime.sendMessage({ target: 'offscreen', action: 'resume', jobId: item.jobId })));
+  } finally {
+    if (updated?.value) void continueBatch(updated.value.runId).catch(error => {
+      console.error('Failed to resume batch:', redact(error?.message || error));
+    });
+  }
   return updated?.batch || null;
 }
 
 async function stopBatch() {
   const updated = await mutateBatch(null, batch => {
-    const item = batch.items.find(candidate => ['opening', 'preparing', 'downloading', 'processing', 'saving'].includes(candidate.state));
+    const items = activeBatchItems(batch.items).map(({ item }) => ({ ...item }));
     batch.state = 'idle';
     batch.items = batch.items.map(candidate => ['complete', 'error'].includes(candidate.state)
       ? candidate : { id: candidate.id, jobId: candidate.jobId, url: candidate.url,
         title: candidate.title, state: 'canceled', progress: 0,
         retryCount: candidate.retryCount, lastError: candidate.lastError });
-    return item ? { ...item } : null;
+    return items;
   });
   if (!updated) return null;
-  const item = updated.value;
   await clearBatchJobs(updated.batch);
-  if (item) await chrome.alarms.clear(batchAlarm(item.jobId));
-  if (item?.downloadId != null) {
-    const download = await getDownload(item.downloadId);
-    if (download) {
-      await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
-      await removePendingFilename(download.url);
-      downloads.delete(item.downloadId);
-      await chrome.storage.session.remove(downloadKey(item.downloadId));
+  await settleControls(updated.value.map(async item => {
+    await chrome.alarms.clear(batchAlarm(item.jobId));
+    if (item?.downloadId != null) {
+      try {
+        const download = await getDownload(item.downloadId);
+        if (download) {
+          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
+          await removePendingFilename(download.url);
+          downloads.delete(item.downloadId);
+          await chrome.storage.session.remove(downloadKey(item.downloadId));
+        }
+      } finally {
+        await chrome.downloads.cancel(item.downloadId);
+      }
+    } else {
+      await cancelOffscreenJob(item.jobId);
     }
-    await chrome.downloads.cancel(item.downloadId);
-  } else if (item) {
-    await cancelOffscreenJob(item.jobId);
-  }
+  }));
   return updated.batch;
 }
 

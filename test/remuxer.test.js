@@ -75,3 +75,28 @@ test('composition offsets do not hide a required short tail', () => {
   remuxer.append('video', 0, stream.buffer);
   assert.equal(remuxer.hasCompleteTrack('video', 1), false);
 });
+
+
+test('releases duplicate output samples without changing the MP4 bytes', async () => {
+  const video = track('video');
+  const audio = track('audio');
+  const remuxer = new Remuxer(video.init, audio.init);
+  for (const [kind, source] of [['video', video], ['audio', audio]]) {
+    const start = source.file.boxes.length;
+    source.file.addSample(source.id, new Uint8Array(1024 * 1024).fill(kind === 'video' ? 0x65 : 0x33), {
+      duration: 10000, dts: 0, cts: 0, is_sync: true
+    });
+    const stream = new DataStream();
+    for (const box of source.file.boxes.slice(start)) box.write(stream);
+    remuxer.append(kind, 0, stream.buffer);
+  }
+  const blob = remuxer.finish();
+  const samples = remuxer.output.moov.traks.flatMap(track => track.samples);
+  assert.equal(samples.length, 2);
+  assert.ok(samples.every(sample => sample.data === null));
+  const mdats = remuxer.output.boxes.filter(box => box.type === 'mdat');
+  assert.equal(mdats.reduce((sum, box) => sum + box.data.byteLength, 0), 2 * 1024 * 1024);
+  // Reconstruct the former retained sample copies and compare full serialized output.
+  samples.forEach((sample, index) => { sample.data = new Uint8Array(mdats[index].data); });
+  assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), new Uint8Array(remuxer.output.getBuffer().buffer));
+});

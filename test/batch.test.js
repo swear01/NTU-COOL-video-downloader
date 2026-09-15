@@ -28,7 +28,7 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   let rejectAction = false;
   let copied = '';
   globalThis.chrome = {
-    i18n: { getMessage: key => key, getUILanguage: () => 'en' },
+    i18n: { getMessage: (key, values) => values ? `${key}: ${values.join(",")}` : key, getUILanguage: () => 'en' },
     permissions: { request: async () => grant },
     runtime: { getManifest: () => ({ version: '1.2.2' }), sendMessage: async message => {
       if (message.action === 'getBatchStatus') {
@@ -52,6 +52,14 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   assert.equal(get('urls').disabled, false);
   const row = get('results').children[0];
   row.open = true;
+  current.items.push({ id: '2', title: 'Second', url: 'https://cool.ntu.edu.tw/courses/1/modules/items/3',
+    state: 'downloading', progress: 25, bytesPerSecond: 2048 });
+  changed({ batch: { newValue: current } }, 'session');
+  assert.match(get('detail').textContent, /1,2,10,0 B\/s/);
+  assert.match(get('detail').textContent, /2,2,25,2.0 KB\/s/);
+  changed({ batch: { newValue: { ...current, state: 'paused' } } }, 'session');
+  assert.match(get('detail').textContent, /2,2,25,0 B\/s/);
+
   current = { ...current, state: 'complete', items: [{ ...current.items[0], state: 'error',
     errorKey: 'downloadFailed', error: 'HTTP 404', errorDetails: { stage: 'segments', segment: 295 } }] };
   changed({ batch: { newValue: current } }, 'session');
@@ -81,4 +89,18 @@ test('batch errors and copy snapshots survive updates, permission failures, and 
   rejectAction = true;
   await get('start').click();
   assert.equal(get('error').textContent, 'Dispatch unavailable');
+  current = { ...current, state: 'running' };
+  changed({ batch: { newValue: current } }, 'session');
+  const originalSend = chrome.runtime.sendMessage;
+  chrome.runtime.sendMessage = async message => {
+    if (message.action !== 'stopBatch') return originalSend(message);
+    current = { ...current, state: 'idle' };
+    changed({ batch: { newValue: current } }, 'session');
+    return { success: false, error: 'Browser cancellation failed' };
+  };
+  await get('stop').click();
+  assert.equal(get('error').textContent, 'Browser cancellation failed');
+  assert.equal(get('stop').disabled, true);
+  assert.equal(get('urls').readOnly, false, 'storage events update the UI even when a control reports failure');
+
 });
