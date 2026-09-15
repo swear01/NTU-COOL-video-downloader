@@ -295,7 +295,7 @@ async function advanceBatch(runId) {
           ['running', 'paused'].includes(batch.state) && batch.items.some(item =>
             item.jobId === action.item.jobId && !['error', 'canceled'].includes(item.state)));
         if (!active?.value) {
-          await cancelDiscovery(action.item.jobId);
+          await cancelOffscreenJob(action.item.jobId);
         }
         return;
       } catch (error) {
@@ -328,7 +328,10 @@ async function handleBatchDiscovery(message) {
     const item = batch.items.find(candidate => candidate.state === 'opening' && candidate.jobId === message.jobId);
     if (!item) return null;
     if (message.status?.state === 'error') Object.assign(item, message.status);
-    else {
+    else if (typeof message.manifestUrl !== 'string' || !message.manifestUrl) {
+      Object.assign(item, errorStatus({ message: 'Video source resolution returned no manifest URL.',
+        code: 'missing_manifest' }, 'discovery'), { errorKey: 'discoveryFailed' });
+    } else {
       item.title = message.title || chrome.i18n.getMessage('untitledVideo');
       item.manifestUrl = message.manifestUrl;
       item.state = 'queued';
@@ -340,7 +343,7 @@ async function handleBatchDiscovery(message) {
   if (updated.value.running) await continueBatch(updated.value.runId);
 }
 
-async function cancelDiscovery(jobId) {
+async function cancelOffscreenJob(jobId) {
   try {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId });
   } catch (error) {
@@ -357,7 +360,7 @@ async function handleBatchTimeout(jobId) {
     return { runId: batch.runId, running: batch.state === 'running' };
   });
   if (!updated?.value) return;
-  await cancelDiscovery(jobId);
+  await cancelOffscreenJob(jobId);
   if (updated.value.running) await continueBatch(updated.value.runId);
 }
 
@@ -486,10 +489,8 @@ async function stopBatch() {
       await chrome.storage.session.remove(downloadKey(item.downloadId));
     }
     await chrome.downloads.cancel(item.downloadId);
-  } else if (item?.state === 'opening') {
-    await cancelDiscovery(item.jobId);
   } else if (item) {
-    await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId: item.jobId });
+    await cancelOffscreenJob(item.jobId);
   }
   return updated.batch;
 }

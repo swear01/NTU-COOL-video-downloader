@@ -9,7 +9,7 @@ export async function discoverVideo(url, signal) {
   }
   let stage = 'page';
   const request = async (resource, options = {}) => {
-    const response = await fetch(resource, { credentials: 'include', cache: 'no-store', signal, ...options });
+    const response = await fetch(resource, { ...options, credentials: 'include', cache: 'no-store', signal });
     if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status} while resolving video source.`), {
       httpStatus: response.status, resource
     });
@@ -42,7 +42,8 @@ export async function discoverVideo(url, signal) {
     catch {
       throw Object.assign(new Error('COOL returned an unsupported video source.'), { code: 'unsupported_source' });
     }
-    if (source.protocol !== 'https:' || !source.hostname.endsWith('.dlc.ntu.edu.tw') ||
+    const trustedHost = source.hostname === 'dlc.ntu.edu.tw' || source.hostname.endsWith('.dlc.ntu.edu.tw');
+    if (source.protocol !== 'https:' || !trustedHost ||
         source.username || source.password || !source.pathname.endsWith('/manifest.mpd')) {
       throw Object.assign(new Error('COOL returned an unsupported video source.'), { code: 'unsupported_source' });
     }

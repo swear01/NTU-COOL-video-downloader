@@ -800,3 +800,17 @@ test('Stop succeeds before the offscreen document exists and prevents late disco
   await starting;
   assert.equal(batch.sent.some(message => message.action === 'discover'), false);
 });
+
+
+test('an empty source report fails visibly instead of restarting discovery', async () => {
+  const store = {};
+  const batch = mockChrome(store);
+  globalThis.chrome = batch.chromeApi;
+  await import(`../background/background.js?empty-source=${Date.now()}`);
+  await send(batch.chromeApi, { action: 'startBatch',
+    urls: ['https://cool.ntu.edu.tw/courses/1/modules/items/2'] });
+  await send(batch.chromeApi, { target: 'background', action: 'discovered', jobId: store.batch.items[0].jobId });
+  assert.equal(store.batch.items[0].errorDetails.code, 'missing_manifest');
+  assert.equal(store.batch.state, 'complete');
+  assert.equal(batch.sent.filter(message => message.action === 'discover').length, 1);
+});

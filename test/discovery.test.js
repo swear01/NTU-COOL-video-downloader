@@ -64,6 +64,8 @@ test('rejects untrusted destinations and preserves authorization failure stages'
     setup({ metadata: { sourceUri } });
     await assert.rejects(discoverVideo(pageUrl), { code: 'unsupported_source' });
   }
+  setup({ metadata: { sourceUri: 'https://dlc.ntu.edu.tw/video/manifest.mpd' } });
+  assert.equal((await discoverVideo(pageUrl)).manifestUrl, 'https://dlc.ntu.edu.tw/video/manifest.mpd');
   setup({ metadata: null });
   await assert.rejects(discoverVideo(pageUrl), { code: 'unsupported_source', stage: 'discovery_metadata' });
   setup({ metadata: { sourceUri: 'invalid' } });
