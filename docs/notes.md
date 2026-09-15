@@ -164,7 +164,10 @@ transfer, remux, and browser saving. It continues filling free slots after each
 dispatch; a completed lookup can start downloading while the other video is still
 running. Signed sources are resolved only as a slot opens. No video tabs open.
 Pause/Resume/Stop address every active job; discovery may finish while paused and
-its source waits in the queue until Resume. The UI shows both progress/speed pairs.
+its source waits in the queue until Resume. Control operations await every job and
+report failures rather than hiding them; Resume still refills free slots if a
+browser resume fails, and Stop still cancels a browser save if Blob release fails.
+The UI shows both progress/speed pairs.
 
 The offscreen document keeps a DownloadControl per source and admits at most two
 transfers, including popup downloads. Each transfer adapts from 4 to 32 fragment

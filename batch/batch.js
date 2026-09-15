@@ -42,9 +42,9 @@ function render(next) {
   }
   element('progress').value = batchProgress(items);
   const current = activeBatchItems(items);
-  text(element('detail'), current.map(current => t('batchProgressDetail', [String(current.index + 1),
-    String(items.length), String(Math.round(current.item.progress || 0)),
-    formatSpeed(state === 'paused' ? 0 : current.item.bytesPerSecond)])).join(' · '));
+  text(element('detail'), current.map(({ index, item }) => t('batchProgressDetail', [String(index + 1),
+    String(items.length), String(Math.round(item.progress || 0)),
+    formatSpeed(state === 'paused' ? 0 : item.bytesPerSecond)])).join(' · '));
   urls.readOnly = active;
   start.disabled = busy || state === 'running' || (state !== 'paused' && !urls.value.trim());
   pause.disabled = busy || state !== 'running';

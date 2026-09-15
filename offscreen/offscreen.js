@@ -10,7 +10,8 @@ const discoveries = new Map();
 
 async function download({ jobId, tabId, manifestUrl, filename }) {
   const source = jobId ?? tabId;
-  if (transfers.has(source) || transfers.size >= 2) throw new Error('Two video downloads are already running.');
+  if (transfers.has(source)) throw new Error('A download for this video is already running.');
+  if (transfers.size >= 2) throw new Error('Two video downloads are already running.');
   const control = new DownloadControl();
   transfers.set(source, control);
   let stage = 'manifest';

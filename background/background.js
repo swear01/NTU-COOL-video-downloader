@@ -452,13 +452,21 @@ async function updateBatchDownloadId(jobId, downloadId) {
   });
 }
 
+async function settleControls(operations) {
+  const results = await Promise.allSettled(operations);
+  const errors = results.filter(result => result.status === 'rejected')
+    .map(result => redact(result.reason?.message || result.reason));
+  if (errors.length) throw new Error(errors.join('; '));
+}
+
 async function pauseBatch() {
   const updated = await mutateBatch(null, batch => {
     if (batch.state !== 'running') return null;
     batch.state = 'paused';
-    return activeBatchItems(batch.items).map(({ item }) => ({ ...item }));
+    return activeBatchItems(batch.items).filter(({ item }) => item.state !== 'opening')
+      .map(({ item }) => ({ ...item }));
   });
-  await Promise.all((updated?.value || []).map(item =>
+  await settleControls((updated?.value || []).map(item =>
     item.state === 'saving' && item.downloadId != null ? chrome.downloads.pause(item.downloadId)
       : chrome.runtime.sendMessage({ target: 'offscreen', action: 'pause', jobId: item.jobId })));
   return updated?.batch || null;
@@ -468,12 +476,18 @@ async function resumeBatch() {
   const updated = await mutateBatch(null, batch => {
     if (batch.state !== 'paused') return null;
     batch.state = 'running';
-    return { items: activeBatchItems(batch.items).map(({ item }) => ({ ...item })), runId: batch.runId };
+    return { items: activeBatchItems(batch.items).filter(({ item }) => item.state !== 'opening')
+      .map(({ item }) => ({ ...item })), runId: batch.runId };
   });
-  await Promise.all((updated?.value?.items || []).map(item =>
-    item.state === 'saving' && item.downloadId != null ? chrome.downloads.resume(item.downloadId)
-      : chrome.runtime.sendMessage({ target: 'offscreen', action: 'resume', jobId: item.jobId })));
-  if (updated?.value) void continueBatch(updated.value.runId).catch(() => {});
+  try {
+    await settleControls((updated?.value?.items || []).map(item =>
+      item.state === 'saving' && item.downloadId != null ? chrome.downloads.resume(item.downloadId)
+        : chrome.runtime.sendMessage({ target: 'offscreen', action: 'resume', jobId: item.jobId })));
+  } finally {
+    if (updated?.value) void continueBatch(updated.value.runId).catch(error => {
+      console.error('Failed to resume batch:', redact(error?.message || error));
+    });
+  }
   return updated?.batch || null;
 }
 
@@ -489,17 +503,20 @@ async function stopBatch() {
   });
   if (!updated) return null;
   await clearBatchJobs(updated.batch);
-  await Promise.all(updated.value.map(async item => {
+  await settleControls(updated.value.map(async item => {
     await chrome.alarms.clear(batchAlarm(item.jobId));
     if (item?.downloadId != null) {
-      const download = await getDownload(item.downloadId);
-      if (download) {
-        await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
-        await removePendingFilename(download.url);
-        downloads.delete(item.downloadId);
-        await chrome.storage.session.remove(downloadKey(item.downloadId));
+      try {
+        const download = await getDownload(item.downloadId);
+        if (download) {
+          await removePendingFilename(download.url);
+          downloads.delete(item.downloadId);
+          await chrome.storage.session.remove(downloadKey(item.downloadId));
+          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'release', url: download.url });
+        }
+      } finally {
+        await chrome.downloads.cancel(item.downloadId);
       }
-      await chrome.downloads.cancel(item.downloadId);
     } else {
       await cancelOffscreenJob(item.jobId);
     }

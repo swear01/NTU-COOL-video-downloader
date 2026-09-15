@@ -936,3 +936,35 @@ test('controls both transfers, resumes a newly resolved slot, and cancels both b
   assert.equal(store['download:21'], undefined);
   assert.deepEqual(mock.sent.filter(message => message.action === 'release').map(message => message.url).sort(), ['blob:0', 'blob:1']);
 });
+
+
+test('control failures remain visible while all jobs are attempted and Resume refills a free slot', async () => {
+  const store = { batch: { runId: 'controls', state: 'paused', items: [
+    { id: '1', jobId: 'batch:controls:1', state: 'saving', downloadId: 7 },
+    { id: '2', jobId: 'batch:controls:2', state: 'queued', title: 'Next',
+      manifestUrl: 'https://video.dlc.ntu.edu.tw/next/manifest.mpd' }
+  ] } };
+  const mock = mockChrome(store);
+  mock.chromeApi.downloads.resume = async () => { throw new Error('Already finished'); };
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?control-failure=${Date.now()}`);
+  const result = await send(mock.chromeApi, { action: 'resumeBatch' });
+  assert.equal(result.success, false);
+  assert.equal(result.error, 'Already finished');
+  await new Promise(resolve => setTimeout(resolve));
+  assert.equal(store.batch.items[1].state, 'preparing', 'a failed resume must not strand the free slot');
+  const canceled = [];
+  mock.chromeApi.downloads.cancel = async id => { canceled.push(id); };
+  for (const [index, item] of store.batch.items.entries()) {
+    item.state = 'saving'; item.downloadId = 7 + index;
+    store[`download:${item.downloadId}`] = { jobId: item.jobId, url: `blob:${index}` };
+  }
+  mock.chromeApi.runtime.sendMessage = async message => {
+    if (message.action === 'release' && message.url === 'blob:0') throw new Error('Offscreen closed');
+  };
+  const stop = await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.equal(stop.success, false);
+  assert.equal(stop.error, 'Offscreen closed');
+  assert.deepEqual(canceled.sort(), [7, 8], 'release failure must not skip either browser cancellation');
+  assert.equal(store.batch.state, 'idle');
+});
