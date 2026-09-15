@@ -30,6 +30,7 @@
     button:hover:not(:disabled) { background: var(--button-hover); }
     button:focus-visible { outline: 2px solid var(--foreground); outline-offset: 2px; }
     button:disabled { cursor: default; background: var(--button-disabled); }
+    #batch { display: block; margin-top: 12px; color: var(--button); text-align: center; }
     #status { margin: 12px 0 0; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
     progress { width: 100%; margin-top: 12px; accent-color: var(--button); }
     .error { color: var(--error); }
@@ -38,6 +39,7 @@
 <body>
   <h1 id="title"></h1>
   <button id="download" disabled></button>
+  <a id="batch" href="../batch/batch.html" target="_blank" rel="noopener">Open COOL batch downloader</a>
   <progress id="progress" max="100" value="0" hidden></progress>
   <p id="status"></p>
   <script type="module" src="popup.js"></script>
