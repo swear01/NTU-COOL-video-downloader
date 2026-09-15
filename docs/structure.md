@@ -2,7 +2,7 @@
 
 ```
 background/   Service worker: manifest capture, download orchestration,
-              batch queue + latest local report, filename determination (scoped listener)
+              batch queue + latest local report, source resolution dispatch, filename determination (scoped listener)
 batch/        Batch-download page: selectable results, copy/export, failed-only retry
 offscreen/    Offscreen document: parallel fragment download + MP4 remux
 popup/        Extension popup UI

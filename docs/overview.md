@@ -9,6 +9,10 @@ normal download manager.
 
 The popup links directly to the batch page, independently of video detection
 and the background worker; the action context menu remains another entry.
+Batch mode fetches each COOL module page with the existing login, submits its
+fresh LTI form, and reads the authorized player metadata in the offscreen
+document. It opens no per-video tabs. Stop and the 30-second discovery timeout
+abort source requests; authorization errors are shown per video.
 Batch mode preserves selectable per-video results and structured errors, with
 copy/export and failed-only retry. The latest sanitized report is saved locally
 from the start of a batch and at state transitions; after a browser restart,

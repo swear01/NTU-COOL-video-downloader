@@ -209,8 +209,8 @@ async function ensureOffscreenDocument() {
   if (await hasOffscreenDocument(chrome, 'offscreen/offscreen.html')) return;
   await chrome.offscreen.createDocument({
     url: 'offscreen/offscreen.html',
-    reasons: ['BLOBS'],
-    justification: 'Download and combine DASH video and audio fragments.'
+    reasons: ['BLOBS', 'DOM_PARSER'],
+    justification: 'Resolve authorized COOL video sources and combine DASH fragments.'
   });
 }
 
@@ -283,22 +283,24 @@ async function advanceBatch(runId) {
         return;
       }
       try {
-        const tab = await chrome.tabs.create({ url: action.item.url, active: false });
-        const accepted = await mutateBatch(runId, batch => {
-          const item = batch.items.find(candidate => candidate.jobId === action.item.jobId && candidate.state === 'opening');
-          if (!item || batch.state === 'idle') return false;
-          item.tabId = tab.id;
-          return true;
-        });
-        if (!accepted?.value) {
-          await chrome.tabs.remove(tab.id);
-          return;
-        }
+        await ensureOffscreenDocument();
+        const accepted = await mutateBatch(runId, batch =>
+          ['running', 'paused'].includes(batch.state) && batch.items.some(item =>
+            item.jobId === action.item.jobId && item.state === 'opening'));
+        if (!accepted?.value) return;
         chrome.alarms.create(batchAlarm(action.item.jobId), { delayInMinutes: 0.5 });
+        await chrome.runtime.sendMessage({ target: 'offscreen', action: 'discover',
+          jobId: action.item.jobId, url: action.item.url });
+        const active = await mutateBatch(runId, batch =>
+          ['running', 'paused'].includes(batch.state) && batch.items.some(item =>
+            item.jobId === action.item.jobId && !['error', 'canceled'].includes(item.state)));
+        if (!active?.value) {
+          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId: action.item.jobId });
+        }
         return;
       } catch (error) {
         await mutateBatch(runId, batch => {
-          const item = batch.items.find(candidate => candidate.jobId === action.item.jobId);
+          const item = batch.items.find(candidate => candidate.jobId === action.item.jobId && candidate.state === 'opening');
           if (item) {
             Object.assign(item, errorStatus(error, 'discovery'));
           }
@@ -320,35 +322,42 @@ async function continueBatch(runId) {
   return advanceBatch(runId);
 }
 
-async function handleBatchManifest(tabId, manifestUrl) {
-  const tab = await chrome.tabs.get(tabId);
+async function handleBatchDiscovery(message) {
   const updated = await mutateBatch(null, batch => {
-    const item = batch.items.find(candidate => candidate.state === 'opening' && candidate.tabId === tabId);
+    if (!['running', 'paused'].includes(batch.state)) return null;
+    const item = batch.items.find(candidate => candidate.state === 'opening' && candidate.jobId === message.jobId);
     if (!item) return null;
-    item.title = tab?.title || chrome.i18n.getMessage('untitledVideo');
-    item.manifestUrl = manifestUrl;
-    item.tabId = null;
-    item.state = 'queued';
+    if (message.status?.state === 'error') Object.assign(item, message.status);
+    else {
+      item.title = message.title || chrome.i18n.getMessage('untitledVideo');
+      item.manifestUrl = message.manifestUrl;
+      item.state = 'queued';
+    }
     return { jobId: item.jobId, runId: batch.runId, running: batch.state === 'running' };
   });
   if (!updated?.value) return;
   await chrome.alarms.clear(batchAlarm(updated.value.jobId));
-  await chrome.tabs.remove(tabId);
   if (updated.value.running) await continueBatch(updated.value.runId);
+}
+
+async function cancelDiscovery(jobId) {
+  try {
+    await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId });
+  } catch (error) {
+    if (!error.message.includes('Receiving end does not exist')) throw error;
+  }
 }
 
 async function handleBatchTimeout(jobId) {
   const updated = await mutateBatch(null, batch => {
     const item = batch.items.find(candidate => candidate.jobId === jobId && candidate.state === 'opening');
     if (!item) return null;
-    const tabId = item.tabId;
-    item.tabId = null;
-    Object.assign(item, errorStatus({ message: 'No video manifest was observed within 30 seconds.',
+    Object.assign(item, errorStatus({ message: 'Video source resolution did not finish within 30 seconds.',
       code: 'discovery_timeout' }, 'discovery'), { errorKey: 'discoveryTimeout' });
-    return { tabId, runId: batch.runId, running: batch.state === 'running' };
+    return { runId: batch.runId, running: batch.state === 'running' };
   });
   if (!updated?.value) return;
-  if (updated.value.tabId != null) await chrome.tabs.remove(updated.value.tabId).catch(() => {});
+  await cancelDiscovery(jobId);
   if (updated.value.running) await continueBatch(updated.value.runId);
 }
 
@@ -383,8 +392,7 @@ chrome.contextMenus.onClicked.addListener(info => {
 });
 
 chrome.webRequest.onBeforeRequest.addListener(details => {
-  return setManifest(details.tabId, details.url)
-    .then(() => handleBatchManifest(details.tabId, details.url));
+  if (details.tabId >= 0) return setManifest(details.tabId, details.url);
 }, { urls: ['https://*.dlc.ntu.edu.tw/*manifest.mpd*'] });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -395,17 +403,6 @@ chrome.tabs.onRemoved.addListener(async tabId => {
   await deleteManifest(tabId);
   const stored = await chrome.storage.session.get('batchPageTabId');
   if (stored.batchPageTabId === tabId) await chrome.storage.session.remove('batchPageTabId');
-  const updated = await mutateBatch(null, batch => {
-    const item = batch.items.find(candidate => candidate.state === 'opening' && candidate.tabId === tabId);
-    if (!item) return null;
-    item.tabId = null;
-    Object.assign(item, errorStatus({ message: 'The video discovery tab was closed.',
-      code: 'discovery_tab_closed' }, 'discovery'));
-    return { jobId: item.jobId, runId: batch.runId, running: batch.state === 'running' };
-  });
-  if (!updated?.value) return;
-  await chrome.alarms.clear(batchAlarm(updated.value.jobId));
-  if (updated.value.running) await continueBatch(updated.value.runId);
 });
 
 chrome.alarms.onAlarm.addListener(alarm => {
@@ -479,10 +476,7 @@ async function stopBatch() {
   if (!updated) return null;
   const item = updated.value;
   await clearBatchJobs(updated.batch);
-  if (item?.tabId != null) {
-    await chrome.alarms.clear(batchAlarm(item.jobId));
-    await chrome.tabs.remove(item.tabId).catch(() => {});
-  }
+  if (item) await chrome.alarms.clear(batchAlarm(item.jobId));
   if (item?.downloadId != null) {
     const download = await getDownload(item.downloadId);
     if (download) {
@@ -492,7 +486,9 @@ async function stopBatch() {
       await chrome.storage.session.remove(downloadKey(item.downloadId));
     }
     await chrome.downloads.cancel(item.downloadId);
-  } else if (item && item.state !== 'opening') {
+  } else if (item?.state === 'opening') {
+    await cancelDiscovery(item.jobId);
+  } else if (item) {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId: item.jobId });
   }
   return updated.batch;
@@ -527,6 +523,11 @@ async function retryBatchFailures() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.target === 'background' && message.action === 'discovered') {
+    handleBatchDiscovery(message).then(() => sendResponse({ success: true }),
+      error => sendResponse({ success: false, error: redact(error.message) }));
+    return true;
+  }
   if (message.target === 'background' && message.action === 'progress') {
     setJob(message.jobId ?? message.tabId, message.status)
       .then(() => sendResponse({ success: true }));

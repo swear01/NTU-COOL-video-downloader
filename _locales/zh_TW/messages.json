@@ -120,13 +120,13 @@
     "message": "無法保存報告，請在關閉瀏覽器前匯出。"
   },
   "discoveryTimeout": {
-    "message": "30 秒內未偵測到影片清單，請確認登入與頁面存取。"
+    "message": "30 秒內未能取得影片來源，請確認已登入且有課程權限。"
   },
   "state_queued": {
     "message": "等待中"
   },
   "state_opening": {
-    "message": "開啟頁面中"
+    "message": "取得影片來源中"
   },
   "state_preparing": {
     "message": "準備中"
