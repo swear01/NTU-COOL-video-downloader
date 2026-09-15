@@ -119,6 +119,9 @@
   "reportSaveFailed": {
     "message": "無法保存報告，請在關閉瀏覽器前匯出。"
   },
+  "discoveryFailed": {
+    "message": "無法取得影片來源。"
+  },
   "discoveryTimeout": {
     "message": "30 秒內未能取得影片來源，請確認已登入且有課程權限。"
   },

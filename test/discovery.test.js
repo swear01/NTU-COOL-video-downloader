@@ -64,6 +64,18 @@ test('rejects untrusted destinations and preserves authorization failure stages'
     setup({ metadata: { sourceUri } });
     await assert.rejects(discoverVideo(pageUrl), { code: 'unsupported_source' });
   }
+  setup({ metadata: null });
+  await assert.rejects(discoverVideo(pageUrl), { code: 'unsupported_source', stage: 'discovery_metadata' });
+  setup({ metadata: { sourceUri: 'invalid' } });
+  await assert.rejects(discoverVideo(pageUrl), { code: 'unsupported_source' });
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async (...args) => {
+    const response = await fetch(...args);
+    response.json = async () => { throw new SyntaxError('Private response content'); };
+    return response;
+  };
+  await assert.rejects(discoverVideo(pageUrl), { code: 'invalid_metadata', stage: 'discovery_metadata',
+    message: 'COOL returned invalid video metadata. Check login and course access.' });
   const calls = setup();
   await assert.rejects(discoverVideo('https://evil.example/courses/1/modules/items/2'));
   assert.equal(calls.length, 0);

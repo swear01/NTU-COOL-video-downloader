@@ -119,6 +119,9 @@
   "reportSaveFailed": {
     "message": "Could not save the report. Export it before closing the browser."
   },
+  "discoveryFailed": {
+    "message": "Could not resolve the video source."
+  },
   "discoveryTimeout": {
     "message": "Video source resolution timed out after 30 seconds. Check login and course access."
   },

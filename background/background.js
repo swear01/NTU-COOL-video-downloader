@@ -295,7 +295,7 @@ async function advanceBatch(runId) {
           ['running', 'paused'].includes(batch.state) && batch.items.some(item =>
             item.jobId === action.item.jobId && !['error', 'canceled'].includes(item.state)));
         if (!active?.value) {
-          await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId: action.item.jobId });
+          await cancelDiscovery(action.item.jobId);
         }
         return;
       } catch (error) {
@@ -344,7 +344,7 @@ async function cancelDiscovery(jobId) {
   try {
     await chrome.runtime.sendMessage({ target: 'offscreen', action: 'cancel', jobId });
   } catch (error) {
-    if (!error.message.includes('Receiving end does not exist')) throw error;
+    if (!error?.message?.includes('Receiving end does not exist')) throw error;
   }
 }
 

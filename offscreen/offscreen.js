@@ -2,7 +2,7 @@ import { discoverVideo } from '../utils/discovery.js';
 import { DownloadControl, downloadAdaptive } from '../utils/downloader.js';
 import { parseMpd } from '../utils/mpd.js';
 import { Remuxer } from '../utils/remuxer.js';
-import { errorStatus } from '../utils/diagnostics.js';
+import { errorStatus, redact } from '../utils/diagnostics.js';
 
 let current = null;
 const objectUrls = new Set();
@@ -107,8 +107,10 @@ chrome.runtime.onMessage.addListener(message => {
     }, error => {
       if (!control.signal.aborted) return chrome.runtime.sendMessage({
         target: 'background', action: 'discovered', jobId: message.jobId,
-        status: errorStatus(error, 'discovery')
+        status: { ...errorStatus(error, 'discovery'), errorKey: 'discoveryFailed' }
       });
+    }).catch(error => {
+      console.error('Failed to report video source resolution:', redact(error?.message || error));
     }).finally(() => {
       if (discoveries.get(message.jobId) === control) discoveries.delete(message.jobId);
     });

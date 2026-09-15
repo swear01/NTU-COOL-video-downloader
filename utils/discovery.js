@@ -37,13 +37,22 @@ export async function discoverVideo(url, signal) {
     }
     stage = 'metadata';
     const metadata = await (await request(`${videoOrigin}/api${player.pathname}/view`)).json();
-    const source = new URL(metadata.sourceUri);
+    let source;
+    try { source = new URL(metadata?.sourceUri); }
+    catch {
+      throw Object.assign(new Error('COOL returned an unsupported video source.'), { code: 'unsupported_source' });
+    }
     if (source.protocol !== 'https:' || !source.hostname.endsWith('.dlc.ntu.edu.tw') ||
         source.username || source.password || !source.pathname.endsWith('/manifest.mpd')) {
       throw Object.assign(new Error('COOL returned an unsupported video source.'), { code: 'unsupported_source' });
     }
     return { manifestUrl: source.href, title: metadata.title || doc.title };
   } catch (error) {
+    if (stage === 'metadata' && error instanceof SyntaxError) {
+      error = Object.assign(new Error('COOL returned invalid video metadata. Check login and course access.'), {
+        code: 'invalid_metadata'
+      });
+    }
     error.stage = `discovery_${stage}`;
     throw error;
   }
