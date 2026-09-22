@@ -99,7 +99,10 @@ window is kept minimal. Never widen this scope.
 - GPAC fixed-duration MPDs can estimate one nonexistent final video segment
   when the presentation duration exceeds actual video duration by milliseconds.
   Download the prefix first; omit the final segment only if contiguous samples
-  already cover the initialization segment's declared fragment duration.
+  already cover the initialization segment's declared fragment duration
+  at its movie-timescale precision (round sample duration up to movie ticks).
+  A 2300.3125-second track can declare 2300313 ticks at 1000 Hz; the
+  half-millisecond rounding difference must not request a nonexistent tail.
   Without that evidence, fetch the tail normally and report any failure.
   Never floor the MPD count or ignore arbitrary 404s: audio and partial video
   tails can contain required samples.

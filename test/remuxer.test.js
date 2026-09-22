@@ -100,3 +100,21 @@ test('releases duplicate output samples without changing the MP4 bytes', async (
   samples.forEach((sample, index) => { sample.data = new Uint8Array(mdats[index].data); });
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()), new Uint8Array(remuxer.output.getBuffer().buffer));
 });
+
+test('compares complete sample duration at the fragment header clock precision', () => {
+  const video = track('video');
+  const audio = track('audio');
+  const remuxer = new Remuxer(video.init, audio.init);
+  const source = remuxer.video;
+  source.info.timescale = 16384;
+  source.fragmentDuration = { num: 2300313, den: 1000 };
+  source.sampleDuration = 37688320;
+  source.next = 230;
+  assert.equal(remuxer.hasCompleteTrack('video', 230), true, '2300.3125 seconds rounds up to 2300313 movie ticks');
+  source.sampleDuration -= 1024;
+  assert.equal(remuxer.hasCompleteTrack('video', 230), false, 'a missing video frame still requires the tail');
+  source.info.timescale = 10000;
+  source.fragmentDuration = { num: 10000, den: 1000 };
+  source.sampleDuration = 99990;
+  assert.equal(remuxer.hasCompleteTrack('video', 230), false, 'a full missing movie tick is not rounding');
+});
