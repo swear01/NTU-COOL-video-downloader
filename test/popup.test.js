@@ -19,6 +19,11 @@ test('popup reaches 100 percent even when omitted tails emit no download update'
   try {
     await import(`../popup/popup.js?progress=${Date.now()}`);
     assert.equal(nodes.get('progress').value, 98);
+    job = { state: 'waiting', progress: 0 };
+    await refresh();
+    assert.equal(nodes.get('status').textContent, 'state_waiting');
+    assert.equal(nodes.get('download').disabled, true);
+    assert.equal(nodes.get('progress').hidden, true);
     for (const state of ['processing', 'saving', 'complete']) {
       nodes.get('progress').value = 98;
       job = { state, progress: 100 };

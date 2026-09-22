@@ -5,18 +5,56 @@ import { Remuxer } from '../utils/remuxer.js';
 import { errorStatus, redact } from '../utils/diagnostics.js';
 
 const transfers = new Map();
-const objectUrls = new Set();
+const objectUrls = new Map();
+const waiting = new Map();
 const discoveries = new Map();
 
-async function download({ jobId, tabId, manifestUrl, filename }) {
+function pump() {
+  for (const [source, entry] of waiting) {
+    if (transfers.size >= 2) break;
+    if (!entry.ready || entry.control.state !== 'running') continue;
+    waiting.delete(source);
+    transfers.set(source, entry.control);
+    download(entry.message, entry.control).catch(error => {
+      console.error('Failed to report download status:', redact(error?.message || error));
+    });
+  }
+}
+
+async function enqueue(message) {
+  const source = message.jobId ?? message.tabId;
+  if (transfers.has(source) || waiting.has(source)) return;
+  const entry = { message, control: new DownloadControl(), ready: false };
+  waiting.set(source, entry);
+  try {
+    await chrome.runtime.sendMessage({
+      target: 'background', action: 'progress',
+      ...(message.jobId ? { jobId: message.jobId } : { tabId: message.tabId }),
+      status: { state: 'waiting', progress: 0 }
+    });
+    entry.ready = true;
+    pump();
+  } catch (error) {
+    if (waiting.get(source) !== entry) return;
+    waiting.delete(source);
+    await chrome.runtime.sendMessage({
+      target: 'background', action: 'progress',
+      ...(message.jobId ? { jobId: message.jobId } : { tabId: message.tabId }),
+      status: errorStatus(error, 'dispatch')
+    });
+  }
+}
+
+async function download({ jobId, tabId, manifestUrl, filename }, control) {
   const source = jobId ?? tabId;
-  if (transfers.has(source)) throw new Error('A download for this video is already running.');
-  if (transfers.size >= 2) throw new Error('Two video downloads are already running.');
-  const control = new DownloadControl();
-  transfers.set(source, control);
   let stage = 'manifest';
   let blobUrl;
   try {
+    await chrome.runtime.sendMessage({
+      target: 'background', action: 'progress',
+      ...(jobId ? { jobId } : { tabId }),
+      status: { state: 'preparing', progress: 0 }
+    });
     let manifestBuffer;
     let manifestBaseUrl;
     await downloadAdaptive(
@@ -81,7 +119,7 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
     const blob = remuxer.finish();
     if (control.state === 'canceled') throw new Error('Download canceled.');
     blobUrl = URL.createObjectURL(blob);
-    objectUrls.add(blobUrl);
+    objectUrls.set(blobUrl, { source, control });
     stage = 'save';
     await chrome.runtime.sendMessage({
       target: 'background', action: 'ready', filename, url: blobUrl,
@@ -89,10 +127,19 @@ async function download({ jobId, tabId, manifestUrl, filename }) {
     });
   } catch (error) {
     if (blobUrl) { URL.revokeObjectURL(blobUrl); objectUrls.delete(blobUrl); }
-    error.stage ||= stage;
-    throw error;
+    if (control.state !== 'canceled') {
+      error.stage ||= stage;
+      await chrome.runtime.sendMessage({
+        target: 'background', action: 'progress',
+        ...(jobId ? { jobId } : { tabId }),
+        status: errorStatus(error, 'dispatch')
+      });
+    }
   } finally {
-    transfers.delete(source);
+    if (!blobUrl || !objectUrls.has(blobUrl)) {
+      if (transfers.get(source) === control) transfers.delete(source);
+      pump();
+    }
   }
 }
 
@@ -120,22 +167,22 @@ chrome.runtime.onMessage.addListener(message => {
   if (message.action === 'cancel') discoveries.get(message.jobId)?.abort();
   if (message.action === 'release') {
     URL.revokeObjectURL(message.url);
+    const entry = objectUrls.get(message.url);
     objectUrls.delete(message.url);
+    if (entry && transfers.get(entry.source) === entry.control) transfers.delete(entry.source);
+    pump();
     return;
   }
   if (['pause', 'resume', 'cancel'].includes(message.action)) {
-    transfers.get(message.jobId ?? message.tabId)?.[message.action]();
+    const source = message.jobId ?? message.tabId;
+    (transfers.get(source) || waiting.get(source)?.control)?.[message.action]();
+    if (message.action === 'cancel') waiting.delete(source);
+    pump();
     return;
   }
   if (message.action === 'download') {
-    download(message).catch(error => {
-      if (/canceled/i.test(error.message)) return;
-      chrome.runtime.sendMessage({
-        target: 'background',
-        action: 'progress',
-        ...(message.jobId ? { jobId: message.jobId } : { tabId: message.tabId }),
-        status: errorStatus(error, 'dispatch')
-      });
+    enqueue(message).catch(error => {
+      console.error('Failed to queue download:', redact(error?.message || error));
     });
   }
 });

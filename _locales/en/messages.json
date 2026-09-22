@@ -125,6 +125,9 @@
   "discoveryTimeout": {
     "message": "Video source resolution timed out after 30 seconds. Check login and course access."
   },
+  "state_waiting": {
+    "message": "Waiting for an available download slot…"
+  },
   "state_queued": {
     "message": "Queued"
   },

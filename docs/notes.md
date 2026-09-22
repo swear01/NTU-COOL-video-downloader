@@ -176,3 +176,20 @@ addSample copies sample bytes into mdat; clear the returned output sample's data
 reference after that copy to avoid retaining duplicate media buffers. Keep mdat
 bytes until Blob serialization and retain all timing metadata. A byte-for-byte
 serialization regression test guards this dependency-specific memory release.
+
+
+## Shared popup/batch queue
+
+Popup requests made while both offscreen slots are occupied enter `waiting`
+instead of failing at dispatch. The offscreen queue retains each request's
+source, filename, and DownloadControl; duplicate requests for an already queued
+or active source are ignored. The scheduler admits the earliest ready, unpaused
+entries, with at most two transfers including browser saving. Blob release
+returns a saving slot; errors and cancellation return transfer slots.
+
+`waiting` is distinct from the batch scheduler's undispatched `queued` state:
+it counts as an active batch item so it cannot be dispatched twice, and batch
+Pause/Resume/Stop reaches it. Stopping a batch only removes its jobs; popup jobs
+continue. Waiting status is acknowledged before admission to avoid a late
+waiting update overwriting download progress. Queues live in the offscreen
+document and do not resume after a full browser restart.

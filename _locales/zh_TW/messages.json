@@ -125,6 +125,9 @@
   "discoveryTimeout": {
     "message": "30 秒內未能取得影片來源，請確認已登入且有課程權限。"
   },
+  "state_waiting": {
+    "message": "等待其他影片完成後開始下載…"
+  },
   "state_queued": {
     "message": "等待中"
   },

@@ -21,6 +21,10 @@ function show(message, error = false) {
 
 function render(job) {
   if (!job) return;
+  if (job.state === 'waiting') {
+    progress.hidden = true;
+    show(t('state_waiting'));
+  }
   if (job.state === 'preparing') show(t('preparingDownload'));
   if (job.state === 'downloading') {
     progress.hidden = false;

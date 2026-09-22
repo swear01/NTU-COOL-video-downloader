@@ -114,7 +114,7 @@ export function batchProgress(items) {
   return Math.round(total / items.length);
 }
 
-const activeBatchStates = new Set(['opening', 'preparing', 'downloading', 'processing', 'saving']);
+const activeBatchStates = new Set(['opening', 'waiting', 'preparing', 'downloading', 'processing', 'saving']);
 
 export function activeBatchItems(items) {
   return items.map((item, index) => ({ item, index }))
