@@ -705,6 +705,8 @@ test('preserves failure diagnostics through Stop and restart, then retries only 
   assert.equal(store.batch.items[0].state, 'complete');
   assert.equal(store.batch.items[1].lastError.error, 'HTTP 404');
   assert.equal(store.batch.items[1].retryCount, 1);
+  assert.deepEqual(store.batch.retryIds, ['2']);
+  assert.deepEqual(store.lastBatchReport.retryIds, ['2']);
   const before = store.batch.runId;
   assert.equal((await send(mock.chromeApi, { action: 'startBatch', urls: [good] })).success, false);
   assert.equal(store.batch.runId, before);
@@ -991,4 +993,27 @@ test('batch waiting for a shared slot is not dispatched twice and responds to pa
   await send(mock.chromeApi, { action: 'stopBatch' });
   assert.ok(mock.sent.some(message => message.action === 'cancel' && message.jobId === first));
   assert.equal(store.batch.items[0].state, 'canceled');
+});
+
+
+test('each retry selects only its failures, preserving prior successes and refreshing attempt IDs', async () => {
+  const store = { batch: { runId: 'old', state: 'complete', retryIds: ['2', '3'], items: [
+    { id: '1', url: 'https://cool.ntu.edu.tw/courses/1/modules/items/1', state: 'complete', progress: 100 },
+    { id: '2', url: 'https://cool.ntu.edu.tw/courses/1/modules/items/2', state: 'complete', progress: 100, retryCount: 1 },
+    { id: '3', url: 'https://cool.ntu.edu.tw/courses/1/modules/items/3', state: 'error', error: 'HTTP 404', retryCount: 1 }
+  ] } };
+  const mock = mockChrome(store);
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?retry-round=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'retryBatchFailures' });
+  assert.deepEqual(store.batch.retryIds, ['3']);
+  assert.deepEqual(store.batch.items.map(item => item.state), ['complete', 'complete', 'opening']);
+  assert.equal(store.batch.items[2].retryCount, 2);
+  assert.deepEqual(mock.sent.filter(message => message.action === 'discover').map(message => message.url), [store.batch.items[2].url]);
+  delete store.batch;
+  const restored = await send(mock.chromeApi, { action: 'getBatchStatus' });
+  assert.deepEqual(restored.batch.retryIds, ['3']);
+  await send(mock.chromeApi, { action: 'startBatch', urls: [restored.batch.items[0].url] });
+  assert.equal(store.batch.retryIds, undefined);
+  assert.equal(store.lastBatchReport.retryIds, undefined);
 });

@@ -163,5 +163,25 @@
   },
   "noFailedVideos": {
     "message": "沒有失敗影片可重試。"
+  },
+  "retryProgressDetail": {
+    "message": "重試 $CURRENT$/$TOTAL$（原第 $ORIGINAL$ 支）· $PERCENT$% · $SPEED$",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "percent": {
+        "content": "$3"
+      },
+      "speed": {
+        "content": "$4"
+      },
+      "original": {
+        "content": "$5"
+      }
+    }
   }
 }

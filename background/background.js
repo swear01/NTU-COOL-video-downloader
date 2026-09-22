@@ -530,15 +530,17 @@ async function retryBatchFailures() {
     if (!old || ['running', 'paused'].includes(old.state)) throw new Error(chrome.i18n.getMessage('noFinishedBatch'));
     if (!old.items.some(item => item.state === 'error')) throw new Error(chrome.i18n.getMessage('noFailedVideos'));
     const runId = crypto.randomUUID();
-    const batch = { runId, state: 'running', items: old.items.map((item, index) => {
-      const retry = item.state === 'error';
-      return {
-        id: item.id, jobId: `batch:${runId}:${index + 1}`, url: item.url, title: item.title,
-        state: retry ? 'queued' : item.state, progress: retry ? 0 : item.progress,
-        retryCount: (item.retryCount || 0) + (retry ? 1 : 0),
-        lastError: retry ? { error: item.error, errorKey: item.errorKey, errorDetails: item.errorDetails } : item.lastError
-      };
-    }) };
+    const batch = { runId, state: 'running',
+      retryIds: old.items.filter(item => item.state === 'error').map(item => item.id),
+      items: old.items.map((item, index) => {
+        const retry = item.state === 'error';
+        return {
+          id: item.id, jobId: `batch:${runId}:${index + 1}`, url: item.url, title: item.title,
+          state: retry ? 'queued' : item.state, progress: retry ? 0 : item.progress,
+          retryCount: (item.retryCount || 0) + (retry ? 1 : 0),
+          lastError: retry ? { error: item.error, errorKey: item.errorKey, errorDetails: item.errorDetails } : item.lastError
+        };
+      }) };
     const parsed = parseBatchUrls(batch.items.map(item => item.url).join('\n'));
     if (parsed.invalid.length || !parsed.urls.length) throw new Error(chrome.i18n.getMessage('invalidLinks'));
     await clearBatchJobs(old);
