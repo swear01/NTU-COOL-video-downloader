@@ -48,6 +48,8 @@
 
 批量下載時，點擊擴充套件圖示，在小視窗選擇「開啟 COOL 批量下載」；也可在圖示上按右鍵選擇同名入口。將單支影片頁面網址一行貼上一個，再按「開始」。「暫停」會暫停兩支進行中的傳輸，「停止」會取消整個佇列。停止後仍保留成功與失敗紀錄。展開影片列可查看錯誤階段、HTTP 狀態、音／視訊軌、片段編號及嘗試次數；可「複製失敗網址」、「複製錯誤報告」或「匯出 JSON 報告」。自動複製失敗時會顯示可手動選取的文字框。「重試失敗影片」只為失敗影片取得全新授權，保留成功結果。批量模式最多同時處理兩支影片，下一支的來源查找會與前一支下載重疊，並分別顯示進度與速度。批量模式會直接取得 COOL 授權及影片來源，不會逐支開啟影片分頁。最新報告會留在本機，重新開啟瀏覽器後仍可查看，但不會自動續傳。
 
+批量與單支下載共用兩個下載名額。名額已滿時，額外請求會顯示等待並自動排隊，直到前一支影片存檔完成；批量的暫停與停止也會控制其等待中的工作，不影響另外觸發的單支下載。
+
 批量模式只接受 `/courses/.../modules/items/...` 直接連結。
 
 ## 權限與隱私
@@ -77,12 +79,12 @@ sha256sum --check SHA256SUMS       # Linux
 shasum -a 256 --check SHA256SUMS  # macOS
 ```
 
-Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.5.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
+Windows 請在 PowerShell 執行 `Get-FileHash .\NTU-COOL-video-downloader-1.2.6.zip -Algorithm SHA256`，並和 `SHA256SUMS` 比對。
 
 使用 [GitHub CLI](https://cli.github.com/)驗證建置來源簽章：
 
 ```sh
-gh attestation verify NTU-COOL-video-downloader-1.2.5.zip \
+gh attestation verify NTU-COOL-video-downloader-1.2.6.zip \
   --repo swear01/NTU-COOL-video-downloader
 ```
 

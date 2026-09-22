@@ -968,3 +968,27 @@ test('control failures remain visible while all jobs are attempted and Resume re
   assert.deepEqual(canceled.sort(), [7, 8], 'release failure must not skip either browser cancellation');
   assert.equal(store.batch.state, 'idle');
 });
+
+
+test('batch waiting for a shared slot is not dispatched twice and responds to pause and stop', async () => {
+  const store = {};
+  const mock = mockChrome(store);
+  globalThis.chrome = mock.chromeApi;
+  await import(`../background/background.js?waiting=${Date.now()}`);
+  await send(mock.chromeApi, { action: 'startBatch', urls: [1, 2, 3].map(id =>
+    `https://cool.ntu.edu.tw/courses/1/modules/items/${id}`) });
+  await discovered(mock, store);
+  const first = store.batch.items[0].jobId;
+  await send(mock.chromeApi, { target: 'background', action: 'progress', jobId: first,
+    status: { state: 'waiting', progress: 0 } });
+  await discovered(mock, store);
+  assert.equal(mock.sent.filter(message => message.action === 'download' && message.jobId === first).length, 1);
+  assert.equal(store.batch.items[2].state, 'queued');
+  await send(mock.chromeApi, { action: 'pauseBatch' });
+  assert.ok(mock.sent.some(message => message.action === 'pause' && message.jobId === first));
+  await send(mock.chromeApi, { action: 'resumeBatch' });
+  assert.ok(mock.sent.some(message => message.action === 'resume' && message.jobId === first));
+  await send(mock.chromeApi, { action: 'stopBatch' });
+  assert.ok(mock.sent.some(message => message.action === 'cancel' && message.jobId === first));
+  assert.equal(store.batch.items[0].state, 'canceled');
+});
