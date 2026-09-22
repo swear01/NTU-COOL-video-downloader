@@ -163,5 +163,25 @@
   },
   "noFailedVideos": {
     "message": "No failed videos to retry."
+  },
+  "retryProgressDetail": {
+    "message": "Retry $CURRENT$/$TOTAL$ (original #$ORIGINAL$) · $PERCENT$% · $SPEED$",
+    "placeholders": {
+      "current": {
+        "content": "$1"
+      },
+      "total": {
+        "content": "$2"
+      },
+      "percent": {
+        "content": "$3"
+      },
+      "speed": {
+        "content": "$4"
+      },
+      "original": {
+        "content": "$5"
+      }
+    }
   }
 }

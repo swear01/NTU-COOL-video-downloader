@@ -48,6 +48,7 @@ function reportError(item) {
 export function batchReport(batch, version) {
   return {
     version, runId: batch.runId, state: batch.state, updatedAt: new Date().toISOString(),
+    ...(batch.retryIds ? { retryIds: [...batch.retryIds] } : {}),
     items: batch.items.map(item => ({
       id: item.id, url: redact(item.url), title: redact(item.title), state: item.state,
       progress: item.progress, retryCount: item.retryCount || 0,

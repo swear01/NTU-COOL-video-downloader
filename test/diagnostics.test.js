@@ -20,3 +20,12 @@ test('diagnostics tolerate missing errors and preserve zero-valued fields', () =
   assert.equal(errorStatus(undefined, 'dispatch').errorDetails.stage, 'dispatch');
   assert.match(formatError({ errorDetails: { attempts: 0 } }), /attempts: 0/);
 });
+
+
+test('persists the retry selection without retaining a mutable array reference', () => {
+  const retryIds = ['22'];
+  const report = batchReport({ runId: 'retry', state: 'complete', retryIds, items: [] }, '1.2.7');
+  assert.deepEqual(report.retryIds, ['22']);
+  retryIds.push('30');
+  assert.deepEqual(report.retryIds, ['22']);
+});

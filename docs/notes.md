@@ -112,6 +112,9 @@ window is kept minimal. Never widen this scope.
   fallback. Stop keeps completed/error rows and canceled retry metadata.
   Retry creates fresh job IDs and
   discovers fresh manifests only for failed rows; it retains the last error.
+  Retry counters, progress, and summary use the attempt’s `retryIds`, while
+  rows keep their original numbers and completed results. Reports preserve
+  this scope across browser restarts; each retry selects only current errors.
 - Only the most recent batch report persists in local storage, from batch
   creation and at state transitions (not every progress tick). A report read
   after browser restart is historical: nonterminal rows are shown as canceled,

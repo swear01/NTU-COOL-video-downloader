@@ -40,11 +40,14 @@ function render(next) {
     urls.value = items.map(item => item.url).join('\n');
     seedUrls = false;
   }
-  element('progress').value = batchProgress(items);
-  const current = activeBatchItems(items);
-  text(element('detail'), current.map(({ index, item }) => t('batchProgressDetail', [String(index + 1),
-    String(items.length), String(Math.round(item.progress || 0)),
-    formatSpeed(state === 'paused' ? 0 : item.bytesPerSecond)])).join(' · '));
+  const retryIds = batch?.retryIds && new Set(batch.retryIds);
+  const attemptItems = retryIds ? items.filter(item => retryIds.has(item.id)) : items;
+  element('progress').value = batchProgress(attemptItems);
+  const current = activeBatchItems(attemptItems);
+  text(element('detail'), current.map(({ index, item }) => t(retryIds ? 'retryProgressDetail' : 'batchProgressDetail', [
+    String(index + 1), String(attemptItems.length), String(Math.round(item.progress || 0)),
+    formatSpeed(state === 'paused' ? 0 : item.bytesPerSecond), ...(retryIds ? [item.id] : [])
+  ])).join(' · '));
   urls.readOnly = active;
   start.disabled = busy || state === 'running' || (state !== 'paused' && !urls.value.trim());
   pause.disabled = busy || state !== 'running';
@@ -54,8 +57,9 @@ function render(next) {
   element('copyFailed').disabled = busy || !failed;
   element('copyReport').disabled = element('exportReport').disabled = busy || !items.length;
   text(element('summary'), !items.length ? '' : (batch?.archived ? t('previousBatch') + ' · ' : '') +
+    (retryIds ? t('retry') + ' · ' : '') +
     ['complete', 'error', 'canceled'].map(value =>
-      `${t('state_' + value)}: ${items.filter(item => item.state === value).length}`).join(' · '));
+      `${t('state_' + value)}: ${attemptItems.filter(item => item.state === value).length}`).join(' · '));
   text(element('storageError'), batch?.storageError ? `${t('reportSaveFailed')} ${batch.storageError}` : '');
   const ids = new Set(items.map(item => item.id));
   for (const [id, row] of rows) {
