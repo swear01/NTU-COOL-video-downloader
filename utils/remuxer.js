@@ -104,7 +104,7 @@ export class Remuxer {
     const duration = source.fragmentDuration;
     return source.pending.size === 0 && source.next === nextIndex &&
       duration?.num > 0 && duration.den > 0 &&
-      source.sampleDuration / source.info.timescale >= duration.num / duration.den;
+      Math.ceil(source.sampleDuration * duration.den / source.info.timescale) >= duration.num;
   }
 
   append(kind, index, buffer) {
